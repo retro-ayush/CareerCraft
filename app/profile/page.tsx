@@ -2,45 +2,20 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowUpRight, BarChart3, Check, CircleCheck, CircleDashed, GraduationCap, Lightbulb, MapPin, Pencil, Plus, Sparkles, Target, X } from "lucide-react";
+import { ArrowUpRight, BarChart3, Check, CircleCheck, CircleDashed, MapPin, Pencil, Plus, Sparkles, Target } from "lucide-react";
 import { api, endpoints } from "@/lib/apiClient";
 import type { Insights, Profile } from "@/lib/types";
-import { Card, CountUp, ErrorBox, PageHeader, Skeleton, prettySkill, toast, useApi } from "@/components/ui";
+import { Button } from "@/components/ui/button";
+import { Input, Label } from "@/components/ui/input";
+import { FadeIn } from "@/components/cc/FadeIn";
+import { PageHeader, Panel } from "@/components/cc/Panel";
+import { SkillChip } from "@/components/cc/SkillChip";
+import { EmptyState, ErrorState, Skeleton } from "@/components/cc/states";
+import { toast } from "@/components/cc/toast";
+import { useApi } from "@/components/cc/hooks";
+import { initials, plural, prettySkill } from "@/components/cc/format";
 
-
-/** Ring used for CGPA and profile completion. */
-function Ring({ value, max, label, display, color }: { value: number; max: number; label: string; display: React.ReactNode; color: string }) {
-  const size = 108,
-    stroke = 8,
-    r = (size - stroke) / 2,
-    c = 2 * Math.PI * r;
-  const p = Math.max(0, Math.min(1, value / max));
-  return (
-    <div className="flex flex-col items-center">
-      <div className="relative grid place-items-center" style={{ width: size, height: size }}>
-        <svg width={size} height={size} className="-rotate-90">
-          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgb(255 255 255 / 0.06)" strokeWidth={stroke} />
-          <circle
-            cx={size / 2}
-            cy={size / 2}
-            r={r}
-            fill="none"
-            stroke={color}
-            strokeWidth={stroke}
-            strokeLinecap="round"
-            strokeDasharray={c}
-            strokeDashoffset={c * (1 - p)}
-            style={{ transition: "stroke-dashoffset 1s cubic-bezier(0.2,0.7,0.2,1)" }}
-          />
-        </svg>
-        <span className="absolute text-[24px] font-semibold tabular-nums tracking-[-0.02em]">{display}</span>
-      </div>
-      <p className="mt-2 text-[12.5px] text-muted">{label}</p>
-    </div>
-  );
-}
-
-/** Profile dashboard: identity, academics, editable skills and cities, completion, skill gap analysis. */
+/** Profile: identity, academics, editable skills and cities, completion, skill gap analysis. */
 export default function ProfilePage() {
   const [refresh, setRefresh] = useState(0);
   const profile = useApi<{ profile: Profile }>(endpoints.profile, refresh);
@@ -48,7 +23,6 @@ export default function ProfilePage() {
   const [newSkill, setNewSkill] = useState("");
   const [cities, setCities] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [hover, setHover] = useState<string | null>(null);
 
   const p = profile.data?.profile;
   const plan = insights.data?.skill_plan.top_skills_to_learn ?? [];
@@ -90,126 +64,107 @@ export default function ProfilePage() {
     setNewSkill("");
   }
 
-  const initials = p
-    ? p.name
-        .split(" ")
-        .map((w) => w[0])
-        .join("")
-        .slice(0, 2)
-    : "";
+  const stats = [
+    { label: "CGPA", value: p ? String(p.cgpa) : undefined },
+    { label: "Profile complete", value: p ? `${completion}%` : undefined },
+    { label: "Strong matches", value: insights.data ? String(insights.data.strong_matches) : undefined },
+  ];
 
   return (
     <div className="space-y-6">
       <PageHeader title="My profile" subtitle="Your academic details and skills drive every match score." />
-      {profile.error && <ErrorBox message={profile.error} />}
+      {profile.error && <ErrorState message={profile.error} onRetry={profile.reload} />}
 
-      {/* Identity + rings */}
-      <section className="panel animate-enter relative overflow-hidden p-5 md:p-6">
-        <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-violet/15 blur-3xl" aria-hidden />
-        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-4">
+      {/* Identity + key numbers */}
+      <section className="flex flex-col gap-6 rounded-panel border border-border bg-surface p-5 md:p-6 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-center gap-4">
+          {p ? (
+            <span className="grid size-16 shrink-0 place-items-center rounded-panel border border-border bg-surface-2 font-display text-h2 font-bold text-ink">{initials(p.name)}</span>
+          ) : (
+            <Skeleton className="size-16 rounded-panel" />
+          )}
+          <div className="min-w-0">
             {p ? (
-              <span className="grid h-[72px] w-[72px] shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-violet to-blue text-[24px] font-semibold text-white shadow-[0_12px_32px_-12px_rgb(116_97_240/0.9)]">
-                {initials}
-              </span>
+              <>
+                <h2 className="text-h2 font-semibold text-ink">{p.name}</h2>
+                <p className="mt-1 text-small text-ink-muted">
+                  {p.degree} · {p.branch} · Class of {p.grad_year}
+                </p>
+                <p className="mt-1 font-mono text-[12px] text-ink-muted">Student ID {p.id}</p>
+              </>
             ) : (
-              <Skeleton className="h-[72px] w-[72px] rounded-2xl" />
-            )}
-            <div className="min-w-0">
-              {p ? (
-                <>
-                  <h2 className="text-[22px] font-semibold tracking-[-0.02em]">{p.name}</h2>
-                  <p className="mt-0.5 font-mono text-[12.5px] text-muted">Student ID {p.id}</p>
-                  <div className="mt-2.5 flex flex-wrap gap-2 text-[12.5px]">
-                    <span className="chip border-edge bg-white/[0.03] text-fg-2">
-                      <GraduationCap size={13} /> {p.degree} · {p.branch}
-                    </span>
-                    <span className="chip border-edge bg-white/[0.03] text-fg-2">Class of {p.grad_year}</span>
-                  </div>
-                </>
-              ) : (
-                <div className="space-y-2">
-                  <Skeleton className="h-6 w-40" />
-                  <Skeleton className="h-4 w-28" />
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center justify-around gap-6 sm:justify-start">
-            <Ring value={p?.cgpa ?? 0} max={10} label="CGPA" display={p ? p.cgpa : "–"} color="var(--color-violet)" />
-            <Ring value={completion} max={100} label="Profile complete" display={p ? `${completion}%` : "–"} color="var(--color-good)" />
-            <div className="hidden flex-col items-center sm:flex">
-              <div className="grid h-[108px] w-[108px] place-items-center rounded-full border border-edge bg-raised/50">
-                <span className="text-[28px] font-semibold tabular-nums text-blue">
-                  <CountUp value={insights.data?.strong_matches} />
-                </span>
+              <div className="space-y-2">
+                <Skeleton className="h-7 w-40" />
+                <Skeleton className="h-4 w-56" />
               </div>
-              <p className="mt-2 text-[12.5px] text-muted">Strong matches</p>
-            </div>
+            )}
           </div>
         </div>
+
+        <dl className="grid grid-cols-3 gap-3 lg:w-[420px]">
+          {stats.map((s) => (
+            <div key={s.label} className="rounded-card border border-border p-3">
+              <dt className="text-[12px] text-ink-muted">{s.label}</dt>
+              <dd className="mt-1 font-mono text-stat font-bold tabular-nums text-ink">{s.value ?? <Skeleton className="h-8 w-12" />}</dd>
+            </div>
+          ))}
+        </dl>
       </section>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
         {/* Left column */}
-        <div className="space-y-5">
-          <Card icon={<Sparkles size={16} />} title="Skills" subtitle="Changing skills re-scores every job instantly">
+        <div className="space-y-6">
+          <Panel icon={<Sparkles size={20} />} title="Skills" subtitle="Changing skills re-scores every job instantly">
             <div className="space-y-4 px-5 pb-5">
-              <div className="flex flex-wrap gap-1.5">
+              <ul className="flex flex-wrap gap-2" aria-label="Your skills">
                 {p?.skills.map((s) => (
-                  <span key={s} className="animate-enter group inline-flex items-center gap-1 rounded-lg border border-good/20 bg-good/10 py-1 pl-2.5 pr-1 text-[12.5px] text-good transition hover:border-good/40">
-                    {s}
-                    <button
-                      aria-label={`Remove ${s}`}
-                      disabled={saving}
-                      onClick={() => patch({ skills: p.skills.filter((x) => x !== s) }, `Removed ${s}`)}
-                      className="rounded-md p-0.5 text-good/60 transition hover:bg-bad/15 hover:text-bad"
-                    >
-                      <X size={12} />
-                    </button>
-                  </span>
+                  <li key={s}>
+                    <SkillChip skill={s} variant="have" removeDisabled={saving} onRemove={() => patch({ skills: p.skills.filter((x) => x !== s) }, `Removed ${s}`)} />
+                  </li>
                 ))}
-                {!p && !profile.error && [0, 1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-7 w-16" />)}
-              </div>
+                {!p && !profile.error && [0, 1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-7 w-16 rounded-full" />)}
+              </ul>
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
                   addSkill(newSkill);
                 }}
-                className="flex gap-2"
+                className="space-y-2"
               >
-                <input value={newSkill} onChange={(e) => setNewSkill(e.target.value)} placeholder="Add a skill, e.g. docker" className="field" />
-                <button disabled={saving || !newSkill.trim()} className="btn shrink-0">
-                  <Plus size={15} /> Add
-                </button>
+                <Label htmlFor="new-skill">Add a skill</Label>
+                <div className="flex gap-2">
+                  <Input id="new-skill" value={newSkill} onChange={(e) => setNewSkill(e.target.value)} placeholder="e.g. docker" />
+                  <Button type="submit" variant="primary" size="lg" disabled={saving || !newSkill.trim()} className="h-11">
+                    <Plus /> Add
+                  </Button>
+                </div>
               </form>
             </div>
-          </Card>
+          </Panel>
 
-          <Card
-            icon={<MapPin size={16} />}
+          <Panel
+            icon={<MapPin size={20} />}
             title="Preferred locations"
             action={
               p &&
               cities === null && (
-                <button onClick={() => setCities(p.preferred_cities.join(", "))} className="btn-ghost !px-2.5 !py-1 text-[12px]">
-                  <Pencil size={12} /> Edit
-                </button>
+                <Button size="sm" variant="ghost" onClick={() => setCities(p.preferred_cities.join(", "))}>
+                  <Pencil /> Edit
+                </Button>
               )
             }
           >
             <div className="px-5 pb-5">
               {p && cities === null && (
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap gap-2">
                   {p.preferred_cities.length ? (
                     p.preferred_cities.map((c) => (
-                      <span key={c} className="chip border-blue/20 bg-blue/10 text-blue">
-                        <MapPin size={11} /> {c}
-                      </span>
+                      <SkillChip key={c} skill={c} variant="neutral" className="text-ink">
+                        <MapPin size={14} className="text-ink-muted" />
+                      </SkillChip>
                     ))
                   ) : (
-                    <span className="text-[13px] text-muted">None set</span>
+                    <span className="text-small text-ink-muted">None set</span>
                   )}
                 </div>
               )}
@@ -220,141 +175,130 @@ export default function ProfilePage() {
                     patch({ preferred_cities: cities.split(",").map((c) => c.trim()).filter(Boolean) }, "Preferred locations updated");
                     setCities(null);
                   }}
-                  className="space-y-2.5"
+                  className="space-y-3"
                 >
-                  <input autoFocus value={cities} onChange={(e) => setCities(e.target.value)} placeholder="Chennai, Bengaluru" className="field" />
+                  <Label htmlFor="cities">Cities, separated by commas</Label>
+                  <Input id="cities" autoFocus value={cities} onChange={(e) => setCities(e.target.value)} placeholder="Chennai, Bengaluru" />
                   <div className="flex gap-2">
-                    <button className="btn !py-1.5 text-[13px]">
-                      <Check size={14} /> Save
-                    </button>
-                    <button type="button" onClick={() => setCities(null)} className="btn-ghost !py-1.5 text-[13px]">
+                    <Button type="submit" size="sm">
+                      <Check /> Save
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setCities(null)}>
                       Cancel
-                    </button>
+                    </Button>
                   </div>
                 </form>
               )}
             </div>
-          </Card>
+          </Panel>
 
-          <Card icon={<CircleCheck size={16} />} title="Profile completion" subtitle={p ? `${completion}% complete` : undefined}>
+          <Panel icon={<CircleCheck size={20} />} title="Profile completion" subtitle={p ? `${completion}% complete` : undefined}>
             <ul className="space-y-2 px-5 pb-5">
               {checks.map((c) => (
-                <li key={c.label} className="flex items-center gap-2.5 text-[13px]">
-                  {c.ok ? <CircleCheck size={15} className="text-good" /> : <CircleDashed size={15} className="text-faint" />}
-                  <span className={c.ok ? "text-fg-2" : "text-muted"}>{c.label}</span>
+                <li key={c.label} className="flex items-center gap-2.5 text-small">
+                  {c.ok ? <CircleCheck size={20} className="text-accent" aria-label="Done" /> : <CircleDashed size={20} className="text-ink-muted" aria-label="Missing" />}
+                  <span className={c.ok ? "text-ink" : "text-ink-muted"}>{c.label}</span>
                 </li>
               ))}
-              {p?.interests && <li className="pt-2 text-[12.5px] text-muted">Interests: {p.interests}</li>}
+              {p?.interests && <li className="pt-2 text-small text-ink-muted">Interests: {p.interests}</li>}
             </ul>
-          </Card>
+          </Panel>
         </div>
 
-        {/* Right column */}
-        <div className="space-y-5">
-          <Card
-            icon={<BarChart3 size={16} />}
+        {/* Right column: skill gaps */}
+        <div className="space-y-6">
+          <Panel
+            icon={<BarChart3 size={20} />}
             title="Skill gap analysis"
             subtitle={`How often each missing skill appears across ${insights.data?.skill_plan.jobs_considered ?? "–"} eligible jobs`}
           >
-            {insights.error && <ErrorBox message={insights.error} />}
             <div className="space-y-3 px-5 pb-5">
+              {insights.error && <ErrorState message={insights.error} onRetry={insights.reload} />}
               {insights.loading && !insights.data && [0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-7 w-full" />)}
               {plan.map((s, i) => {
                 const reqPct = (s.required_in_jobs / maxRequired) * 100;
                 const nicePct = (s.nice_to_have_in_jobs / maxRequired) * 100;
-                const dim = hover && hover !== s.skill;
                 return (
-                  <div
-                    key={s.skill}
-                    onMouseEnter={() => setHover(s.skill)}
-                    onMouseLeave={() => setHover(null)}
-                    style={{ animationDelay: `${i * 50}ms` }}
-                    className={`animate-enter grid grid-cols-[110px_1fr_auto] items-center gap-3 transition-opacity ${dim ? "opacity-40" : ""}`}
-                  >
-                    <span className="truncate text-[13px] text-fg-2">{prettySkill(s.skill)}</span>
-                    <div className="flex h-6 overflow-hidden rounded-md bg-white/[0.04]">
-                      <div className="h-full bg-gradient-to-r from-violet to-violet-strong transition-[width] duration-700" style={{ width: `${reqPct}%` }} title={`Required in ${s.required_in_jobs} jobs`} />
-                      <div className="h-full bg-blue/50 transition-[width] duration-700" style={{ width: `${nicePct}%` }} title={`Nice-to-have in ${s.nice_to_have_in_jobs} jobs`} />
+                  <FadeIn key={s.skill} index={i} className="grid grid-cols-[96px_1fr_auto] items-center gap-3 sm:grid-cols-[120px_1fr_auto]">
+                    <span className="truncate text-small text-ink">{prettySkill(s.skill)}</span>
+                    <div
+                      className="flex h-6 overflow-hidden rounded-input bg-surface-2"
+                      role="img"
+                      aria-label={`${prettySkill(s.skill)}: required in ${s.required_in_jobs} jobs, nice-to-have in ${s.nice_to_have_in_jobs}`}
+                    >
+                      <div className="h-full bg-warn" style={{ width: `${reqPct}%` }} />
+                      <div className="h-full border-l border-surface bg-warn/40" style={{ width: `${nicePct}%` }} />
                     </div>
-                    <span className="w-16 text-right font-mono text-[12px] tabular-nums text-good">+{s.avg_score_gain} avg</span>
-                  </div>
+                    <span className="w-20 text-right font-mono text-small tabular-nums text-ink">+{s.avg_score_gain} avg</span>
+                  </FadeIn>
                 );
               })}
               {plan.length > 0 && (
-                <div className="flex flex-wrap gap-4 pt-2 text-[12px] text-muted">
+                <div className="flex flex-wrap gap-x-5 gap-y-2 pt-2 text-[12px] text-ink-muted">
                   <span className="flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-sm bg-violet" /> Required
+                    <span className="size-3 rounded-sm bg-warn" /> Required
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-sm bg-blue/50" /> Nice-to-have
+                    <span className="size-3 rounded-sm bg-warn/40" /> Nice-to-have
                   </span>
-                  <span className="flex items-center gap-1.5 text-good">+N avg = score gain per job</span>
+                  <span>+N avg = average score gain per job</span>
                 </div>
               )}
+              {!insights.loading && !insights.error && plan.length === 0 && (
+                <EmptyState icon={<CircleCheck size={20} />} title="No skill gaps" className="py-8">
+                  You already cover every skill your eligible jobs ask for.
+                </EmptyState>
+              )}
             </div>
-          </Card>
-
-          <Card icon={<Target size={16} />} title="Most valuable skills to learn" subtitle="Ranked by how many jobs each one unlocks">
-            <ol className="space-y-2 px-3 pb-3">
-              {plan.slice(0, 5).map((s, i) => (
-                <li
-                  key={s.skill}
-                  style={{ animationDelay: `${i * 50}ms` }}
-                  className="animate-enter group flex flex-col gap-3 rounded-xl p-3 transition hover:bg-white/[0.03] sm:flex-row sm:items-center"
-                >
-                  <span
-                    className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl font-mono text-[13px] font-semibold ${
-                      i === 0 ? "bg-gradient-to-br from-violet to-blue text-white" : "border border-edge bg-raised text-fg-2"
-                    }`}
-                  >
-                    {i + 1}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="flex flex-wrap items-center gap-2 text-[14px] font-medium">
-                      {prettySkill(s.skill)}
-                      {s.jobs_fully_unlocked > 0 && (
-                        <span className="chip border-good/20 bg-good/10 text-good">
-                          Unlocks {s.jobs_fully_unlocked} job{s.jobs_fully_unlocked > 1 ? "s" : ""}
-                        </span>
-                      )}
-                    </p>
-                    <p className="mt-0.5 truncate text-[12.5px] text-muted">
-                      Required in {s.required_in_jobs} · e.g. {s.example_jobs.join(", ")}
-                    </p>
-                  </div>
-                  <button disabled={saving} onClick={() => addSkill(s.skill)} className="btn-ghost shrink-0 !py-1.5 text-[12.5px] hover:!border-good/40 hover:!text-good" title="Mark as learned and add it to your profile">
-                    <Check size={13} /> I learned it
-                  </button>
-                </li>
-              ))}
-              {!insights.loading && plan.length === 0 && !insights.error && <p className="px-3 py-6 text-center text-[13.5px] text-muted">You already cover every skill these jobs ask for.</p>}
-            </ol>
-          </Card>
+          </Panel>
 
           {plan.length > 0 && (
-            <Card icon={<Lightbulb size={16} />} title="AI learning recommendations" subtitle="Run a real what-if simulation with the assistant">
+            <Panel icon={<Target size={20} />} title="Most valuable skills to learn" subtitle="Ranked by how many jobs each one unlocks">
+              <ol className="space-y-1 px-2 pb-3">
+                {plan.slice(0, 5).map((s, i) => (
+                  <FadeIn as="li" key={s.skill} index={i} className="flex flex-col gap-3 rounded-card p-3 transition-colors hover:bg-surface-2 sm:flex-row sm:items-center">
+                    <span className="grid size-10 shrink-0 place-items-center rounded-card border border-border font-mono text-small font-bold text-ink">{i + 1}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <SkillChip skill={s.skill} variant="gap" />
+                        {s.jobs_fully_unlocked > 0 && <span className="text-small font-medium text-ink">Unlocks {plural(s.jobs_fully_unlocked, "job")}</span>}
+                      </div>
+                      <p className="mt-1.5 truncate text-small text-ink-muted">
+                        Required in {s.required_in_jobs} · e.g. {s.example_jobs.join(", ")}
+                      </p>
+                    </div>
+                    <Button size="sm" disabled={saving} onClick={() => addSkill(s.skill)} title="Mark as learned and add it to your profile">
+                      <Check /> I learned it
+                    </Button>
+                  </FadeIn>
+                ))}
+              </ol>
+            </Panel>
+          )}
+
+          {plan.length > 0 && (
+            <Panel icon={<Sparkles size={20} />} title="Try a what-if" subtitle="Ask the assistant how your matches change if you learn a skill">
               <div className="grid gap-3 px-5 pb-5 md:grid-cols-3">
-                {plan.slice(0, 3).map((s, i) => (
+                {plan.slice(0, 3).map((s) => (
                   <Link
                     key={s.skill}
                     href={`/?ask=${encodeURIComponent(`What if I learn ${s.skill}? How do my matches change?`)}`}
-                    style={{ animationDelay: `${i * 60}ms` }}
-                    className="animate-enter group flex flex-col justify-between rounded-xl border border-edge bg-gradient-to-br from-violet/[0.08] to-transparent p-4 transition hover:-translate-y-0.5 hover:border-violet/40"
+                    className="flex flex-col justify-between rounded-card border border-border p-4 transition-colors hover:bg-surface-2"
                   >
                     <div>
-                      <p className="text-[14px] font-medium">Learn {prettySkill(s.skill)}</p>
-                      <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
+                      <p className="font-medium text-ink">Learn {prettySkill(s.skill)}</p>
+                      <p className="mt-1 text-small text-ink-muted">
                         +{s.avg_score_gain} average score across {s.required_in_jobs + s.nice_to_have_in_jobs} jobs
                         {s.jobs_fully_unlocked ? `, fully unlocks ${s.jobs_fully_unlocked}` : ""}.
                       </p>
                     </div>
-                    <span className="mt-3 flex items-center gap-1 text-[12.5px] text-violet">
-                      Simulate with AI <ArrowUpRight size={13} className="transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                    <span className="mt-4 flex items-center gap-1 text-small font-medium text-ink">
+                      Ask the assistant <ArrowUpRight size={16} />
                     </span>
                   </Link>
                 ))}
               </div>
-            </Card>
+            </Panel>
           )}
         </div>
       </div>

@@ -1,11 +1,14 @@
 "use client";
 
-import { Bot, CircleCheck, CircleX, Database, KeyRound, LogOut, ServerCog, ShieldCheck, Wrench } from "lucide-react";
-import { Card, ErrorBox, PageHeader, Skeleton, useApi } from "@/components/ui";
+import { Bot, CircleCheck, CircleX, Database, KeyRound, LogOut, Palette, ServerCog, ShieldCheck, Wrench } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { PageHeader, Panel } from "@/components/cc/Panel";
+import { ErrorState, Skeleton } from "@/components/cc/states";
+import { ThemeSelect } from "@/components/cc/ThemeToggle";
+import { useApi } from "@/components/cc/hooks";
 import { useSignOut } from "@/components/useSignOut";
 import { endpoints } from "@/lib/apiClient";
 import type { HealthStatus } from "@/lib/types";
-
 
 const SETTING_LABELS: Record<string, { label: string; icon: React.ElementType }> = {
   LLM_KEY: { label: "AI model key (Groq or Gemini)", icon: Bot },
@@ -27,76 +30,98 @@ const TOOLS = [
   ["saveCoverNote", true],
 ] as const;
 
-/** Settings: account, configuration status from /api/health (never shows values) and the agent's tools. */
+/** Settings: account, appearance, configuration status from /api/health (never shows values) and the agent's tools. */
 export default function SettingsPage() {
   const health = useApi<HealthStatus>(endpoints.health);
   const signOut = useSignOut();
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Settings" subtitle="Account, configuration status and the AI agent's toolset." />
+      <PageHeader title="Settings" subtitle="Account, appearance, configuration status and the assistant's tools." />
 
-      <div className="grid gap-5 lg:grid-cols-2">
-        <Card icon={<ShieldCheck size={16} />} title="Account" subtitle="Signed in with the shared team passcode">
-          <div className="flex items-center justify-between gap-4 px-5 pb-5">
-            <div className="flex items-center gap-3">
-              <span className="grid h-11 w-11 place-items-center rounded-full bg-gradient-to-br from-violet to-blue text-[14px] font-semibold text-white">DK</span>
-              <div>
-                <p className="font-medium">Divya K</p>
-                <p className="font-mono text-[12px] text-muted">S001</p>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="space-y-6">
+          <Panel icon={<ShieldCheck size={20} />} title="Account" subtitle="Signed in with the shared team passcode">
+            <div className="flex items-center justify-between gap-4 px-5 pb-5">
+              <div className="flex items-center gap-3">
+                <span className="grid size-11 place-items-center rounded-full border border-border bg-surface-2 text-small font-semibold text-ink">DK</span>
+                <div>
+                  <p className="font-medium text-ink">Divya K</p>
+                  <p className="font-mono text-[12px] text-ink-muted">S001</p>
+                </div>
               </div>
+              <Button onClick={signOut}>
+                <LogOut /> Log out
+              </Button>
             </div>
-            <button onClick={signOut} className="btn-ghost text-[13px] hover:!border-bad/40 hover:!text-bad">
-              <LogOut size={14} /> Log out
-            </button>
-          </div>
-        </Card>
+          </Panel>
 
-        <Card
-          icon={<ServerCog size={16} />}
+          <Panel icon={<Palette size={20} />} title="Appearance" subtitle="Saved in this browser">
+            <div className="px-5 pb-5">
+              <ThemeSelect />
+            </div>
+          </Panel>
+        </div>
+
+        <Panel
+          icon={<ServerCog size={20} />}
           title="Configuration"
           subtitle="Which environment settings are present. Values are never shown."
           action={
             health.data && (
-              <span className={`chip ${health.data.ok ? "border-good/20 bg-good/10 text-good" : "border-warn/25 bg-warn/10 text-warn"}`}>{health.data.ok ? "All set" : "Incomplete"}</span>
+              <span className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-border px-3 text-small text-ink">
+                {health.data.ok ? <CircleCheck size={16} className="text-accent" /> : <CircleX size={16} className="text-danger" />}
+                {health.data.ok ? "All set" : "Incomplete"}
+              </span>
             )
           }
         >
-          {health.error && <ErrorBox message={health.error} />}
+          {health.error && <ErrorState message={health.error} onRetry={health.reload} className="mx-5 mb-5" />}
           <ul className="space-y-1 px-3 pb-4">
-            {health.loading && !health.data && [0, 1, 2, 3].map((i) => <Skeleton key={i} className="mx-2 my-2 h-5" />)}
+            {health.loading && !health.data && [0, 1, 2, 3].map((i) => <Skeleton key={i} className="mx-2 my-3 h-5" />)}
             {health.data &&
               Object.entries(health.data.settings).map(([k, ok]) => {
                 const meta = SETTING_LABELS[k] ?? { label: k, icon: KeyRound };
                 return (
-                  <li key={k} className="flex items-center gap-3 rounded-lg px-2 py-2 text-[13.5px]">
-                    <meta.icon size={15} className="text-muted" />
-                    <span className="flex-1 text-fg-2">{meta.label}</span>
-                    {ok ? <CircleCheck size={16} className="text-good" /> : <CircleX size={16} className="text-bad" />}
+                  <li key={k} className="flex min-h-10 items-center gap-3 rounded-card px-2 text-small">
+                    <meta.icon size={20} className="text-ink-muted" />
+                    <span className="flex-1 text-ink">{meta.label}</span>
+                    {ok ? (
+                      <span className="flex items-center gap-1.5 text-ink-muted">
+                        <CircleCheck size={20} className="text-accent" /> Set
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1.5 text-danger">
+                        <CircleX size={20} /> Missing
+                      </span>
+                    )}
                   </li>
                 );
               })}
             {health.data && (
-              <li className="flex items-center gap-3 rounded-lg px-2 py-2 text-[13.5px]">
-                <Bot size={15} className="text-muted" />
-                <span className="flex-1 text-fg-2">Active AI provider</span>
-                <span className="font-mono text-[12.5px] capitalize text-fg">{health.data.llm}</span>
+              <li className="flex min-h-10 items-center gap-3 rounded-card px-2 text-small">
+                <Bot size={20} className="text-ink-muted" />
+                <span className="flex-1 text-ink">Active AI provider</span>
+                <span className="font-mono capitalize text-ink">{health.data.llm}</span>
               </li>
             )}
           </ul>
-        </Card>
+        </Panel>
       </div>
 
-      <Card icon={<Wrench size={16} />} title="Agent tools" subtitle="The model chooses these itself. Zod validates every call before it runs.">
-        <div className="grid gap-2 px-5 pb-5 sm:grid-cols-2 lg:grid-cols-5">
+      <Panel icon={<Wrench size={20} />} title="Assistant tools" subtitle="The model chooses these itself. Zod validates every call before it runs.">
+        <ul className="grid gap-2 px-5 pb-5 sm:grid-cols-2 lg:grid-cols-5">
           {TOOLS.map(([name, writes]) => (
-            <div key={name} className="flex items-center justify-between gap-2 rounded-xl border border-edge bg-raised/50 px-3 py-2.5">
-              <span className="truncate font-mono text-[12px] text-fg-2">{name}</span>
-              <span className={`shrink-0 text-[10.5px] font-medium ${writes ? "text-warn" : "text-muted"}`}>{writes ? "write" : "read"}</span>
-            </div>
+            <li key={name} className="flex items-center justify-between gap-2 rounded-card border border-border px-3 py-2.5">
+              <span className="truncate font-mono text-[12px] text-ink">{name}</span>
+              <span className="flex shrink-0 items-center gap-1 text-[12px] text-ink-muted">
+                {writes && <Database size={12} />}
+                {writes ? "write" : "read"}
+              </span>
+            </li>
           ))}
-        </div>
-      </Card>
+        </ul>
+      </Panel>
     </div>
   );
 }

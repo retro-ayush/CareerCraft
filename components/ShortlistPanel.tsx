@@ -2,30 +2,37 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Bookmark, FileText } from "lucide-react";
+import { ArrowRight, BadgeCheck, Bookmark, CircleX, FileText, MessagesSquare, Send } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import type { ShortlistItem } from "@/lib/types";
-import { Card, CompanyLogo, DeadlineChip, ErrorBox, EmptyState, ScoreBar, Skeleton } from "./ui";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { DeadlineTag } from "./cc/DeadlineTag";
+import { MatchScore } from "./cc/MatchScore";
+import { Panel } from "./cc/Panel";
+import { EmptyState, ErrorState, Skeleton } from "./cc/states";
 
-export const STATUS_STYLE: Record<string, { dot: string; text: string; soft: string; label: string }> = {
-  saved: { dot: "bg-muted", text: "text-fg-2", soft: "bg-white/[0.06]", label: "Saved" },
-  applied: { dot: "bg-blue", text: "text-blue", soft: "bg-blue/12", label: "Applied" },
-  interviewing: { dot: "bg-plum", text: "text-plum", soft: "bg-plum/12", label: "Interviewing" },
-  offer: { dot: "bg-good", text: "text-good", soft: "bg-good/12", label: "Offer" },
-  rejected: { dot: "bg-bad", text: "text-bad", soft: "bg-bad/12", label: "Rejected" },
+/** Each status has its own icon and label, so it is never told apart by colour alone. Only "offer" uses the accent. */
+export const STATUS_STYLE: Record<string, { label: string; icon: LucideIcon; text: string }> = {
+  saved: { label: "Saved", icon: Bookmark, text: "text-ink-muted" },
+  applied: { label: "Applied", icon: Send, text: "text-ink" },
+  interviewing: { label: "Interviewing", icon: MessagesSquare, text: "text-ink" },
+  offer: { label: "Offer", icon: BadgeCheck, text: "text-accent" },
+  rejected: { label: "Rejected", icon: CircleX, text: "text-ink-muted" },
 };
 
 export function StatusBadge({ status }: { status: string }) {
   const s = STATUS_STYLE[status] ?? STATUS_STYLE.saved;
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[11.5px] font-medium ${s.soft} ${s.text}`}>
-      <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} />
+    <span className={cn("inline-flex h-6 items-center gap-1.5 rounded-full border border-border px-2 text-[12px] font-medium", s.text)}>
+      <s.icon size={14} />
       {s.label}
     </span>
   );
 }
 
 /** Compact live shortlist for the dashboard. Newly saved jobs are highlighted briefly. */
-export default function ShortlistPanel({ items, loading, error }: { items: ShortlistItem[] | null; loading: boolean; error: string }) {
+export default function ShortlistPanel({ items, loading, error, onRetry }: { items: ShortlistItem[] | null; loading: boolean; error: string; onRetry?: () => void }) {
   const seen = useRef<Set<number> | null>(null);
   const [fresh, setFresh] = useState<Set<number>>(new Set());
   useEffect(() => {
@@ -44,64 +51,67 @@ export default function ShortlistPanel({ items, loading, error }: { items: Short
   const list = items ?? [];
 
   return (
-    <Card
-      icon={<Bookmark size={16} />}
-      title="Live shortlist"
-      subtitle="Updates when the agent saves a job"
+    <Panel
+      icon={<Bookmark size={20} />}
+      title="Shortlist"
+      subtitle="Updates when the assistant saves a job"
       action={
-        <Link href="/shortlist" className="group flex items-center gap-1 whitespace-nowrap text-[12.5px] text-muted transition hover:text-fg">
-          Tracker <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" />
+        <Link href="/shortlist" className="flex items-center gap-1 whitespace-nowrap rounded-card py-1 text-small text-ink-muted transition-colors hover:text-ink">
+          Tracker <ArrowRight size={16} />
         </Link>
       }
     >
-      {error && <ErrorBox message={error} />}
+      {error && <ErrorState message={error} onRetry={onRetry} className="mx-5 mb-5" />}
       {loading && !items && (
-        <div className="space-y-4 px-5 pb-5">
+        <div className="space-y-4 px-5 pb-5" role="status" aria-label="Loading shortlist">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="flex gap-3">
-              <Skeleton className="h-9 w-9 rounded-xl" />
-              <div className="flex-1 space-y-2">
-                <Skeleton className="h-3.5 w-2/3" />
-                <Skeleton className="h-3 w-1/2" />
-              </div>
+            <div key={i} className="space-y-2">
+              <Skeleton className="h-4 w-2/3" />
+              <Skeleton className="h-3 w-1/2" />
             </div>
           ))}
         </div>
       )}
       {!error && items && list.length === 0 && (
-        <EmptyState icon={<Bookmark size={20} />} title="Nothing saved yet">
-          Ask the assistant to find and save your best matches.
+        <EmptyState
+          icon={<Bookmark size={20} />}
+          title="Nothing saved yet"
+          action={
+            <Button asChild size="sm">
+              <Link href="/jobs">Explore jobs</Link>
+            </Button>
+          }
+        >
+          Shortlist roles from your matches, or ask the assistant to save your best ones.
         </EmptyState>
       )}
-      <ul className="thin-scroll max-h-[300px] space-y-1 overflow-y-auto px-2.5 pb-3">
-        {list.map((s) => (
-          <li
-            key={s.job_id}
-            className={`animate-enter rounded-xl px-2.5 py-2.5 transition ${fresh.has(s.job_id) ? "bg-good/10 ring-1 ring-good/30" : "hover:bg-white/[0.03]"}`}
-          >
-            <div className="flex items-start gap-3">
-              <CompanyLogo name={s.company} size={34} />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[13.5px] font-medium">{s.title}</p>
-                <p className="truncate text-[12px] text-muted">
-                  {s.company} · {s.city}
-                </p>
-                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                  <StatusBadge status={s.status} />
-                  <DeadlineChip days={s.days_left} />
-                  {s.cover_note && (
-                    <span className="chip border-edge text-fg-2">
-                      <FileText size={11} /> Note
-                    </span>
-                  )}
-                  {fresh.has(s.job_id) && <span className="text-[11px] font-medium text-good">Just added</span>}
+      {list.length > 0 && (
+        <ul className="thin-scroll max-h-[320px] space-y-1 overflow-y-auto px-2 pb-3">
+          {list.map((s) => (
+            <li key={s.job_id} className={cn("rounded-card px-3 py-3 transition-colors", fresh.has(s.job_id) ? "bg-accent-soft" : "hover:bg-surface-2")}>
+              <div className="flex items-start gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-small font-medium text-ink">{s.title}</p>
+                  <p className="truncate text-small text-ink-muted">
+                    {s.company} · {s.city}
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                    <StatusBadge status={s.status} />
+                    <DeadlineTag days={s.days_left} className="text-[12px]" />
+                    {s.cover_note && (
+                      <span className="inline-flex items-center gap-1 text-[12px] text-ink-muted">
+                        <FileText size={14} /> Note
+                      </span>
+                    )}
+                    {fresh.has(s.job_id) && <span className="text-[12px] font-medium text-ink">Just added</span>}
+                  </div>
                 </div>
+                {s.match_score != null && <MatchScore score={s.match_score} size="sm" className="flex-col items-end gap-0" />}
               </div>
-              {s.match_score != null && <ScoreBar score={s.match_score} />}
-            </div>
-          </li>
-        ))}
-      </ul>
-    </Card>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
   );
 }

@@ -1,19 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
-import { CalendarDays, Copy, FileText, GripVertical, Inbox, MapPin, RefreshCw, Trash2, X } from "lucide-react";
+import Link from "next/link";
+import { useState } from "react";
+import { CalendarDays, Copy, FileText, Inbox, RefreshCw, Trash2 } from "lucide-react";
 import { api, endpoints, notifyShortlistChanged } from "@/lib/apiClient";
 import { APPLICATION_STATUSES as STATUSES } from "@/lib/constants";
 import type { ApplicationStatus as Status, ShortlistItem } from "@/lib/types";
+import { cn } from "@/lib/utils";
 import { STATUS_STYLE, StatusBadge } from "@/components/ShortlistPanel";
-import { CompanyLogo, DeadlineChip, EmptyState, ErrorBox, PageHeader, ScoreBar, ScoreRing, Skeleton, toast, useApi } from "@/components/ui";
-
-
-function fmtDate(iso: string) {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
-}
+import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { DeadlineTag } from "@/components/cc/DeadlineTag";
+import { FadeIn } from "@/components/cc/FadeIn";
+import { MatchScore } from "@/components/cc/MatchScore";
+import { PageHeader } from "@/components/cc/Panel";
+import { EmptyState, ErrorState, Skeleton } from "@/components/cc/states";
+import { toast } from "@/components/cc/toast";
+import { useApi } from "@/components/cc/hooks";
+import { fmtDate, plural } from "@/components/cc/format";
 
 /** Application tracker: drag cards between status columns; click a card for details and the cover note. */
 export default function ShortlistPage() {
@@ -32,7 +37,7 @@ export default function ShortlistPage() {
     setData({ shortlist: items.map((i) => (i.job_id === job_id ? { ...i, status } : i)) });
     try {
       await api.shortlist.update(job_id, { status });
-      toast(status === "offer" ? `Offer from ${item.company}! Congratulations 🎉` : `${item.company} moved to ${STATUS_STYLE[status].label}`, status === "rejected" ? "info" : "success");
+      toast(status === "offer" ? `Offer from ${item.company} recorded` : `${item.company} moved to ${STATUS_STYLE[status].label}`, status === "rejected" ? "info" : "success");
     } catch (err) {
       setData(prev); // roll back the optimistic move
       toast(err instanceof Error ? err.message : "Could not update status", "error");
@@ -54,266 +59,277 @@ export default function ShortlistPage() {
   }
 
   const active = items.filter((i) => i.status !== "rejected").length;
+  const firstLoad = loading && !data;
 
   return (
     <div className="space-y-6">
-      <PageHeader title="My shortlist" subtitle={`${active} active application${active === 1 ? "" : "s"} · drag a card to update its status`}>
-        <button onClick={() => reload()} className="btn-ghost text-[13px]">
-          <RefreshCw size={14} className={loading ? "animate-spin" : ""} /> Refresh
-        </button>
+      <PageHeader title="My shortlist" subtitle={`${plural(active, "active application")}. Drag a card, or open it, to update its status.`}>
+        <Button onClick={() => reload()} disabled={loading}>
+          <RefreshCw className={loading ? "animate-spin" : undefined} /> Refresh
+        </Button>
       </PageHeader>
 
       {/* Pipeline summary */}
-      <div className="animate-enter grid grid-cols-5 gap-1 rounded-2xl border border-edge bg-panel p-1">
+      <dl className="grid grid-cols-5 divide-x divide-border rounded-panel border border-border bg-surface">
         {STATUSES.map((st) => {
           const n = items.filter((i) => i.status === st).length;
           return (
-            <div key={st} className="rounded-xl px-2 py-2.5 text-center">
-              <p className={`text-[20px] font-semibold tabular-nums ${n ? STATUS_STYLE[st].text : "text-faint"}`}>{n}</p>
-              <p className="truncate text-[11.5px] text-muted">{STATUS_STYLE[st].label}</p>
+            <div key={st} className="px-2 py-4 text-center">
+              <dd className={cn("font-mono text-[20px] font-bold leading-7 tabular-nums md:text-stat", n ? STATUS_STYLE[st].text : "text-ink-muted")}>{firstLoad ? "–" : n}</dd>
+              <dt className="truncate text-[12px] text-ink-muted md:text-small">{STATUS_STYLE[st].label}</dt>
             </div>
           );
         })}
-      </div>
+      </dl>
 
-      {error && <ErrorBox message={error} />}
+      {error && <ErrorState message={error} onRetry={reload} />}
       {!loading && !error && items.length === 0 && (
-        <div className="panel">
-          <EmptyState icon={<Inbox size={20} />} title="Your shortlist is empty">
-            Ask the assistant: &ldquo;Find jobs in Chennai that match my skills and save the top 3.&rdquo;
+        <div className="rounded-panel border border-border bg-surface">
+          <EmptyState
+            icon={<Inbox size={20} />}
+            title="Your shortlist is empty"
+            action={
+              <Button asChild>
+                <Link href="/jobs">Explore jobs</Link>
+              </Button>
+            }
+          >
+            Shortlist roles from your matches, or ask the assistant: &ldquo;Find jobs in Chennai that match my skills and save the top 3.&rdquo;
           </EmptyState>
         </div>
       )}
 
-      <div className="thin-scroll -mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-3 md:-mx-8 md:px-8 xl:mx-0 xl:grid xl:grid-cols-5 xl:overflow-visible xl:px-0">
-        {STATUSES.map((st, ci) => {
-          const col = items.filter((i) => i.status === st);
-          const isOver = overCol === st && dragId != null;
-          return (
-            <section
-              key={st}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setOverCol(st);
-              }}
-              onDragLeave={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget as Node)) setOverCol(null);
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                if (dragId != null) setStatus(dragId, st);
-                setDragId(null);
-                setOverCol(null);
-              }}
-              style={{ animationDelay: `${ci * 50}ms` }}
-              className={`animate-enter flex min-h-[420px] w-[272px] shrink-0 snap-start flex-col rounded-2xl border p-2 transition duration-200 xl:w-auto ${
-                isOver ? "border-violet/50 bg-violet/[0.06] shadow-[0_0_0_4px_rgb(139_124_246/0.08)]" : "border-edge bg-panel/60"
-              }`}
-            >
-              <header className="flex items-center justify-between px-2 pb-2.5 pt-1.5">
-                <span className="flex items-center gap-2 text-[13px] font-medium">
-                  <span className={`h-2 w-2 rounded-full ${STATUS_STYLE[st].dot}`} />
-                  {STATUS_STYLE[st].label}
-                </span>
-                <span className="rounded-md bg-white/[0.05] px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-muted">{col.length}</span>
-              </header>
-              <div className="flex flex-1 flex-col gap-2">
-                {loading && !data && <Skeleton className="h-28 w-full rounded-xl" />}
-                {col.map((s) => (
-                  <article
-                    key={s.job_id}
-                    draggable
-                    onDragStart={(e) => {
-                      setDragId(s.job_id);
-                      e.dataTransfer.effectAllowed = "move";
-                    }}
-                    onDragEnd={() => {
-                      setDragId(null);
-                      setOverCol(null);
-                    }}
-                    onClick={() => setOpenId(s.job_id)}
-                    className={`animate-enter group cursor-grab rounded-xl border border-edge bg-raised p-3 transition duration-200 hover:-translate-y-0.5 hover:border-edge-strong hover:shadow-[0_12px_28px_-16px_rgb(0_0_0/0.9)] active:cursor-grabbing ${
-                      dragId === s.job_id ? "rotate-[1.5deg] scale-[0.98] opacity-40" : ""
-                    }`}
-                  >
-                    <div className="flex items-start gap-2.5">
-                      <CompanyLogo name={s.company} size={32} />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[13.5px] font-medium leading-snug">{s.title}</p>
-                        <p className="truncate text-[12px] text-muted">{s.company}</p>
-                      </div>
-                      <GripVertical size={15} className="hidden shrink-0 text-faint transition group-hover:text-muted xl:block" />
-                    </div>
-                    {s.match_score != null && (
-                      <div className="mt-3">
-                        <ScoreBar score={s.match_score} wide />
-                      </div>
-                    )}
-                    <div className="mt-3 flex flex-wrap items-center justify-between gap-1.5">
-                      <span className="flex items-center gap-1 text-[11.5px] text-muted">
-                        <CalendarDays size={12} /> {fmtDate(s.saved_at)}
-                      </span>
-                      <div className="flex items-center gap-1.5">
-                        {s.cover_note && <FileText size={13} className="text-violet" aria-label="Has cover note" />}
-                        <DeadlineChip days={s.days_left} />
-                      </div>
-                    </div>
-                    {/* Touch screens can't drag, so offer a select there. */}
-                    <select
-                      value={s.status}
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={(e) => setStatus(s.job_id, e.target.value as Status)}
-                      className="field mt-2.5 !rounded-lg !py-1.5 text-[12px] xl:hidden"
-                      aria-label="Change status"
-                    >
-                      {STATUSES.map((x) => (
-                        <option key={x} value={x}>
-                          {STATUS_STYLE[x].label}
-                        </option>
-                      ))}
-                    </select>
-                  </article>
-                ))}
-                {!loading && col.length === 0 && (
-                  <div
-                    className={`grid flex-1 place-items-center rounded-xl border border-dashed text-[12px] transition ${
-                      isOver ? "border-violet/60 text-violet" : "border-edge text-faint"
-                    }`}
-                  >
-                    {isOver ? "Drop here" : "No jobs"}
-                  </div>
+      {(firstLoad || items.length > 0) && (
+        <div className="thin-scroll -mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-3 md:-mx-8 md:px-8 xl:mx-0 xl:grid xl:grid-cols-5 xl:overflow-visible xl:px-0">
+          {STATUSES.map((st) => {
+            const col = items.filter((i) => i.status === st);
+            const isOver = overCol === st && dragId != null;
+            const S = STATUS_STYLE[st];
+            return (
+              <section
+                key={st}
+                aria-label={S.label}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setOverCol(st);
+                }}
+                onDragLeave={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) setOverCol(null);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (dragId != null) setStatus(dragId, st);
+                  setDragId(null);
+                  setOverCol(null);
+                }}
+                className={cn(
+                  "flex min-h-[420px] w-[272px] shrink-0 snap-start flex-col rounded-panel border p-2 transition-colors xl:w-auto",
+                  isOver ? "border-accent bg-accent-soft" : "border-border bg-surface"
                 )}
-              </div>
-            </section>
-          );
-        })}
-      </div>
+              >
+                <header className="flex items-center justify-between px-2 pb-3 pt-2">
+                  <span className={cn("flex items-center gap-2 text-small font-medium", S.text === "text-accent" ? "text-accent" : "text-ink")}>
+                    <S.icon size={16} />
+                    {S.label}
+                  </span>
+                  <span className="font-mono text-small tabular-nums text-ink-muted">{col.length}</span>
+                </header>
+                <div className="flex flex-1 flex-col gap-2">
+                  {firstLoad && <Skeleton className="h-32 w-full rounded-card" />}
+                  {col.map((s, i) => (
+                    <FadeIn key={s.job_id} index={i}>
+                      <article
+                        draggable
+                        onDragStart={(e) => {
+                          setDragId(s.job_id);
+                          e.dataTransfer.effectAllowed = "move";
+                        }}
+                        onDragEnd={() => {
+                          setDragId(null);
+                          setOverCol(null);
+                        }}
+                        className={cn(
+                          "group relative cursor-grab rounded-card border border-border bg-surface p-3 transition-colors hover:bg-surface-2 active:cursor-grabbing",
+                          dragId === s.job_id && "opacity-40"
+                        )}
+                      >
+                        <div className="flex items-start gap-2">
+                          <div className="min-w-0 flex-1">
+                            {/* The title button opens the details; it stretches over the card so the whole card is clickable. */}
+                            <button
+                              type="button"
+                              onClick={() => setOpenId(s.job_id)}
+                              className="text-left text-small font-medium text-ink after:absolute after:inset-0 after:rounded-card after:content-['']"
+                            >
+                              {s.title}
+                            </button>
+                            <p className="truncate text-[12px] leading-4 text-ink-muted">{s.company}</p>
+                          </div>
+                          {s.match_score != null && <MatchScore score={s.match_score} size="sm" className="flex-col items-end gap-0" />}
+                        </div>
+                        <div className="mt-3">
+                          <div className="space-y-1">
+                            <DeadlineTag days={s.days_left} className="text-[12px]" />
+                            <p className="flex items-center gap-1.5 text-[12px] text-ink-muted">
+                              <CalendarDays size={14} /> Saved {fmtDate(s.saved_at)}
+                              {s.cover_note && (
+                                <>
+                                  <FileText size={14} className="ml-1" /> <span>Note</span>
+                                </>
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                        {/* Touch screens can't drag, so offer a select there. Sits above the stretched title button. */}
+                        <Select
+                          value={s.status}
+                          onChange={(e) => setStatus(s.job_id, e.target.value as Status)}
+                          className="relative z-10 mt-3 h-9 text-small xl:hidden"
+                          aria-label={`Status for ${s.title}`}
+                        >
+                          {STATUSES.map((x) => (
+                            <option key={x} value={x}>
+                              {STATUS_STYLE[x].label}
+                            </option>
+                          ))}
+                        </Select>
+                      </article>
+                    </FadeIn>
+                  ))}
+                  {!firstLoad && col.length === 0 && (
+                    <div className={cn("grid flex-1 place-items-center rounded-card border border-dashed text-small", isOver ? "border-accent text-ink" : "border-border text-ink-muted")}>
+                      {isOver ? "Drop here" : "No jobs"}
+                    </div>
+                  )}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      )}
 
-      {open && <DetailPanel item={open} onClose={() => setOpenId(null)} onStatus={(st) => setStatus(open.job_id, st)} onRemove={() => remove(open.job_id)} />}
+      <Dialog open={open != null} onOpenChange={(o) => !o && setOpenId(null)}>
+        {open && <DetailPanel key={open.job_id} item={open} onStatus={(st) => setStatus(open.job_id, st)} onRemove={() => remove(open.job_id)} />}
+      </Dialog>
     </div>
   );
 }
 
-function DetailPanel({ item, onClose, onStatus, onRemove }: { item: ShortlistItem; onClose: () => void; onStatus: (s: Status) => void; onRemove: () => void }) {
+function DetailPanel({ item, onStatus, onRemove }: { item: ShortlistItem; onStatus: (s: Status) => void; onRemove: () => void }) {
   const [confirming, setConfirming] = useState(false);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
-  // Rendered into <body> so the backdrop covers the sidebar too.
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label={item.title}>
-      <div className="animate-fade absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <aside className="animate-drawer relative flex h-full w-full max-w-[460px] flex-col border-l border-edge bg-panel shadow-[-24px_0_64px_-24px_rgb(0_0_0/0.8)]">
-        <div className="flex items-start gap-4 border-b border-edge p-6">
-          <CompanyLogo name={item.company} size={48} />
-          <div className="min-w-0 flex-1">
-            <p className="text-[13px] text-muted">
-              {item.company} · Job #{item.job_id}
-            </p>
-            <h2 className="mt-0.5 text-[20px] font-semibold leading-tight tracking-[-0.02em]">{item.title}</h2>
-            <p className="mt-1.5 flex items-center gap-1.5 text-[12.5px] text-fg-2">
-              <MapPin size={13} className="text-muted" /> {item.city} · {item.work_mode} · {item.job_type}
-            </p>
+  return (
+    <DialogContent side="right">
+      <div className="border-b border-border p-6 pr-16">
+        <p className="text-small text-ink-muted">
+          {item.company} · Job #{item.job_id}
+        </p>
+        <DialogTitle className="mt-1">{item.title}</DialogTitle>
+        <DialogDescription className="mt-2">
+          {item.city} · {item.work_mode} · {item.job_type}
+        </DialogDescription>
+      </div>
+
+      <div className="thin-scroll flex-1 space-y-6 overflow-y-auto p-6">
+        <dl className="grid grid-cols-3 gap-3">
+          <div className="rounded-card border border-border p-3">
+            <dt className="sr-only">Match score</dt>
+            <dd>{item.match_score != null ? <MatchScore score={item.match_score} className="items-start" /> : <span className="text-small text-ink-muted">Not scored</span>}</dd>
           </div>
-          <button onClick={onClose} aria-label="Close" className="rounded-lg p-1.5 text-muted transition hover:bg-white/[0.05] hover:text-fg">
-            <X size={18} />
-          </button>
+          <div className="rounded-card border border-border p-3">
+            <dt className="text-[12px] text-ink-muted">Apply by</dt>
+            <dd className="mt-1 font-mono text-small text-ink">{item.apply_by}</dd>
+            <dd className="mt-1">
+              <DeadlineTag days={item.days_left} className="text-[12px]" />
+            </dd>
+          </div>
+          <div className="rounded-card border border-border p-3">
+            <dt className="text-[12px] text-ink-muted">Saved on</dt>
+            <dd className="mt-1 text-small text-ink">{fmtDate(item.saved_at)}</dd>
+            <dd className="mt-2">
+              <StatusBadge status={item.status} />
+            </dd>
+          </div>
+        </dl>
+
+        <div>
+          <h3 id="status-label" className="mb-3 font-sans text-small font-medium text-ink">
+            Status
+          </h3>
+          <div role="radiogroup" aria-labelledby="status-label" className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {STATUSES.map((st) => {
+              const on = item.status === st;
+              const S = STATUS_STYLE[st];
+              return (
+                <button
+                  key={st}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  onClick={() => onStatus(st)}
+                  className={cn(
+                    "flex h-10 items-center gap-2 rounded-card border px-3 text-small transition-colors",
+                    on ? "border-accent bg-accent-soft font-medium text-ink" : "border-border text-ink-muted hover:bg-surface-2 hover:text-ink"
+                  )}
+                >
+                  <S.icon size={16} />
+                  {S.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        <div className="thin-scroll flex-1 space-y-6 overflow-y-auto p-6">
-          <div className="grid grid-cols-3 gap-3">
-            <div className="flex flex-col items-center rounded-xl border border-edge bg-raised/60 p-3">
-              {item.match_score != null ? <ScoreRing score={item.match_score} size={56} /> : <span className="text-muted">–</span>}
-              <p className="mt-1.5 text-[11.5px] text-muted">Match</p>
-            </div>
-            <div className="rounded-xl border border-edge bg-raised/60 p-3">
-              <p className="text-[11.5px] text-muted">Apply by</p>
-              <p className="mt-1 font-mono text-[13px]">{item.apply_by}</p>
-              <div className="mt-2">
-                <DeadlineChip days={item.days_left} />
-              </div>
-            </div>
-            <div className="rounded-xl border border-edge bg-raised/60 p-3">
-              <p className="text-[11.5px] text-muted">Saved on</p>
-              <p className="mt-1 text-[13px]">{fmtDate(item.saved_at)}</p>
-              <div className="mt-2">
-                <StatusBadge status={item.status} />
-              </div>
-            </div>
-          </div>
-
+        {item.reason && (
           <div>
-            <p className="eyebrow mb-2.5">Status</p>
-            <div className="grid grid-cols-5 gap-1 rounded-xl border border-edge bg-raised/50 p-1">
-              {STATUSES.map((st) => {
-                const on = item.status === st;
-                return (
-                  <button
-                    key={st}
-                    onClick={() => onStatus(st)}
-                    className={`truncate rounded-lg px-1 py-2 text-[11.5px] transition active:scale-95 ${on ? `${STATUS_STYLE[st].soft} ${STATUS_STYLE[st].text} font-medium` : "text-muted hover:bg-white/[0.04] hover:text-fg"}`}
-                  >
-                    {STATUS_STYLE[st].label}
-                  </button>
-                );
-              })}
-            </div>
+            <h3 className="mb-2 font-sans text-small font-medium text-ink">Why it was saved</h3>
+            <p className="text-body text-ink-muted">{item.reason}</p>
           </div>
+        )}
 
-          {item.reason && (
-            <div>
-              <p className="eyebrow mb-2">Why it was saved</p>
-              <p className="text-[14px] leading-relaxed text-fg-2">{item.reason}</p>
-            </div>
-          )}
-
-          <div>
-            <div className="mb-2 flex items-center justify-between">
-              <p className="eyebrow">Cover note</p>
-              {item.cover_note && (
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(item.cover_note ?? "");
-                    toast("Cover note copied", "info");
-                  }}
-                  className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[12px] text-fg-2 transition hover:bg-white/[0.05] hover:text-fg"
-                >
-                  <Copy size={12} /> Copy
-                </button>
-              )}
-            </div>
-            {item.cover_note ? (
-              <p className="whitespace-pre-wrap rounded-xl border border-edge bg-raised/60 p-4 text-[14px] leading-relaxed text-fg-2">{item.cover_note}</p>
-            ) : (
-              <p className="rounded-xl border border-dashed border-edge p-4 text-[13px] text-muted">
-                No cover note yet. Ask the assistant: &ldquo;Write a cover note for job #{item.job_id} and save it.&rdquo;
-              </p>
+        <div>
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="font-sans text-small font-medium text-ink">Cover note</h3>
+            {item.cover_note && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  navigator.clipboard.writeText(item.cover_note ?? "");
+                  toast("Cover note copied", "info");
+                }}
+              >
+                <Copy /> Copy
+              </Button>
             )}
           </div>
-        </div>
-
-        <div className="border-t border-edge p-5">
-          {confirming ? (
-            <div className="flex items-center gap-2 text-[13px]">
-              <span className="flex-1 text-fg-2">Remove this job from your shortlist?</span>
-              <button onClick={() => setConfirming(false)} className="btn-ghost !py-1.5 text-[12.5px]">
-                Cancel
-              </button>
-              <button onClick={onRemove} className="inline-flex items-center gap-1.5 rounded-xl bg-bad px-3 py-1.5 text-[12.5px] font-medium text-white transition hover:brightness-110 active:scale-95">
-                <Trash2 size={13} /> Remove
-              </button>
-            </div>
+          {item.cover_note ? (
+            <p className="whitespace-pre-wrap rounded-card border border-border bg-surface-2 p-4 text-body text-ink">{item.cover_note}</p>
           ) : (
-            <button onClick={() => setConfirming(true)} className="flex items-center gap-1.5 text-[13px] text-muted transition hover:text-bad">
-              <Trash2 size={14} /> Remove from shortlist
-            </button>
+            <p className="rounded-card border border-dashed border-border p-4 text-small text-ink-muted">
+              No cover note yet. Ask the assistant: &ldquo;Write a cover note for job #{item.job_id} and save it.&rdquo;
+            </p>
           )}
         </div>
-      </aside>
-    </div>,
-    document.body
+      </div>
+
+      <div className="border-t border-border p-4">
+        {confirming ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="flex-1 text-small text-ink">Remove this job from your shortlist?</span>
+            <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" onClick={onRemove}>
+              <Trash2 /> Remove
+            </Button>
+          </div>
+        ) : (
+          <Button size="sm" variant="ghost" onClick={() => setConfirming(true)}>
+            <Trash2 /> Remove from shortlist
+          </Button>
+        )}
+      </div>
+    </DialogContent>
   );
 }

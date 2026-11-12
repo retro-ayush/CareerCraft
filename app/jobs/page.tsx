@@ -1,11 +1,19 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Loader2, Search, SearchX, SlidersHorizontal, X } from "lucide-react";
+import { Loader2, Search, SearchX, X } from "lucide-react";
 import { endpoints, jobsUrl } from "@/lib/apiClient";
 import type { JobMatch, JobType, ShortlistItem } from "@/lib/types";
-import JobCard from "@/components/JobCard";
-import { EmptyState, ErrorBox, PageHeader, Pill, Skeleton, useApi, useDebounced } from "@/components/ui";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Input, Select } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { FadeIn } from "@/components/cc/FadeIn";
+import { JobMatchCard } from "@/components/cc/JobMatchCard";
+import { PageHeader } from "@/components/cc/Panel";
+import { EmptyState, ErrorState, JobGridSkeleton } from "@/components/cc/states";
+import { useApi, useDebounced } from "@/components/cc/hooks";
+import { plural } from "@/components/cc/format";
 
 const CITIES = ["", "Chennai", "Bengaluru", "Hyderabad", "Pune", "Coimbatore", "Remote"];
 const SORTS = { score: "Best match", deadline: "Closing soon", gap: "Fewest skill gaps" } as const;
@@ -24,12 +32,12 @@ export default function JobsPage() {
   const debouncedQ = useDebounced(q, 300);
   const url = jobsUrl({ city, q: debouncedQ, job_type: jobType });
 
-  const { data, error, loading } = useApi<{ jobs: JobMatch[] }>(url);
+  const { data, error, loading, reload } = useApi<{ jobs: JobMatch[] }>(url);
   const shortlist = useApi<{ shortlist: ShortlistItem[] }>(endpoints.shortlist, refresh);
   const saved = new Set((shortlist.data?.shortlist ?? []).map((s) => s.job_id));
 
   const all = useMemo(() => data?.jobs ?? [], [data]);
-  const hidden = all.filter((j) => !j.eligible).length;
+  const eligibleCount = all.filter((j) => j.eligible).length;
   const jobs = useMemo(() => {
     const list = all.filter((j) => (!eligibleOnly || j.eligible) && j.match_score >= minScore);
     if (sort === "deadline") return [...list].sort((a, b) => a.days_left - b.days_left);
@@ -53,110 +61,115 @@ export default function JobsPage() {
       <PageHeader title="Explore jobs" subtitle="Every open role, scored against your skills: 70% required skills, 20% nice-to-have, 10% preferred city." />
 
       {/* Filters */}
-      <section className="panel animate-enter space-y-4 p-4 md:p-5">
+      <section aria-label="Filters" className="space-y-4 rounded-panel border border-border bg-surface p-4 md:p-5">
         <div className="flex flex-col gap-3 md:flex-row">
-          <label className="relative flex-1">
-            <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by role or skill, e.g. data analyst, react" className="field !pl-10 !pr-9" />
+          <div className="relative flex-1">
+            <label htmlFor="job-search" className="sr-only">
+              Search jobs
+            </label>
+            <Search size={20} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
+            <Input id="job-search" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by role or skill, e.g. data analyst" className="pl-10 pr-10" />
             {q && (
-              <button onClick={() => setQ("")} aria-label="Clear search" className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-muted hover:text-fg">
-                <X size={15} />
+              <button
+                type="button"
+                onClick={() => setQ("")}
+                aria-label="Clear search"
+                className="absolute right-1 top-1/2 grid size-9 -translate-y-1/2 place-items-center rounded-input text-ink-muted hover:bg-surface-2 hover:text-ink"
+              >
+                <X size={20} />
               </button>
             )}
-          </label>
+          </div>
           <div className="grid grid-cols-2 gap-3 md:flex">
-            <select value={jobType} onChange={(e) => setJobType(e.target.value as JobType | "")} className="field md:!w-44">
+            <Select value={jobType} onChange={(e) => setJobType(e.target.value as JobType | "")} aria-label="Job type" className="md:w-44">
               <option value="">All job types</option>
               <option value="Full-time">Full-time</option>
               <option value="Internship">Internship</option>
-            </select>
-            <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="field md:!w-48">
+            </Select>
+            <Select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} aria-label="Sort by" className="md:w-52">
               {Object.entries(SORTS).map(([k, v]) => (
                 <option key={k} value={k}>
                   Sort: {v}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         </div>
 
-        <div className="thin-scroll -mx-1 flex gap-1 overflow-x-auto px-1 pb-0.5">
+        <div role="group" aria-label="Location" className="thin-scroll -mx-1 flex gap-2 overflow-x-auto px-1 py-1">
           {CITIES.map((c) => (
-            <Pill key={c} active={city === c} onClick={() => setCity(c)}>
+            <button
+              key={c}
+              type="button"
+              aria-pressed={city === c}
+              onClick={() => setCity(c)}
+              className={cn(
+                "h-8 shrink-0 whitespace-nowrap rounded-full border px-3 text-small transition-colors",
+                city === c ? "border-accent bg-accent-soft font-medium text-ink" : "border-border text-ink-muted hover:bg-surface-2 hover:text-ink"
+              )}
+            >
               {c || "All locations"}
-            </Pill>
+            </button>
           ))}
         </div>
 
-        <div className="flex flex-col gap-4 border-t border-edge pt-4 sm:flex-row sm:items-center sm:justify-between">
-          <label className="flex flex-1 items-center gap-3 text-[13px] text-fg-2 sm:max-w-sm">
-            <SlidersHorizontal size={15} className="shrink-0 text-muted" />
-            <span className="shrink-0">Min match</span>
-            <input type="range" min={0} max={100} step={5} value={minScore} onChange={(e) => setMinScore(Number(e.target.value))} className="flex-1" aria-label="Minimum match score" />
-            <span className="w-10 text-right font-mono tabular-nums text-fg">{minScore}%</span>
+        <div className="flex flex-col gap-4 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <label className="flex flex-1 items-center gap-3 text-small text-ink sm:max-w-sm">
+            <span className="shrink-0">Minimum match</span>
+            <input type="range" min={0} max={100} step={5} value={minScore} onChange={(e) => setMinScore(Number(e.target.value))} className="h-6 flex-1" />
+            <span className="w-12 text-right font-mono tabular-nums text-ink">{minScore}%</span>
           </label>
-          <div className="flex items-center gap-4">
-            <button
-              type="button"
-              role="switch"
-              aria-checked={eligibleOnly}
-              onClick={() => setEligibleOnly(!eligibleOnly)}
-              className="flex items-center gap-2.5 text-[13px] text-fg-2"
-            >
-              <span className={`relative h-5 w-9 rounded-full transition ${eligibleOnly ? "bg-violet" : "bg-white/[0.12]"}`}>
-                <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${eligibleOnly ? "left-[18px]" : "left-0.5"}`} />
-              </span>
-              Eligible only <span className="font-mono text-[12px] text-muted">({hidden} hidden)</span>
-            </button>
-            {filtersActive && (
-              <button onClick={reset} className="text-[13px] text-violet hover:underline">
-                Reset
-              </button>
-            )}
-          </div>
+          {filtersActive && (
+            <Button size="sm" variant="ghost" onClick={reset} className="self-start sm:self-auto">
+              Reset filters
+            </Button>
+          )}
         </div>
       </section>
 
-      <div className="flex items-center justify-between text-[13px] text-muted">
-        <span>{searching ? "Searching…" : `${jobs.length} job${jobs.length === 1 ? "" : "s"} found`}</span>
-        {searching && <Loader2 size={15} className="animate-spin text-violet" />}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Tabs value={eligibleOnly ? "eligible" : "all"} onValueChange={(v) => setEligibleOnly(v === "eligible")}>
+          <TabsList aria-label="Which jobs to show">
+            <TabsTrigger value="eligible">
+              Eligible <span className="font-mono text-ink-muted">{data ? eligibleCount : "–"}</span>
+            </TabsTrigger>
+            <TabsTrigger value="all">
+              All jobs <span className="font-mono text-ink-muted">{data ? all.length : "–"}</span>
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+        <p className="flex items-center gap-2 text-small text-ink-muted" aria-live="polite">
+          {searching && <Loader2 size={16} className="animate-spin" />}
+          {searching ? "Searching" : `${plural(jobs.length, "job")} shown`}
+        </p>
       </div>
 
-      {error && <ErrorBox message={error} />}
-
-      {loading && !data ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {[0, 1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="panel space-y-4 p-5">
-              <div className="flex gap-3">
-                <Skeleton className="h-10 w-10 rounded-xl" />
-                <div className="flex-1 space-y-2">
-                  <Skeleton className="h-3 w-1/3" />
-                  <Skeleton className="h-4 w-2/3" />
-                </div>
-                <Skeleton className="h-12 w-12 rounded-full" />
-              </div>
-              <Skeleton className="h-4 w-3/4" />
-              <div className="flex gap-1.5">
-                <Skeleton className="h-6 w-14" />
-                <Skeleton className="h-6 w-16" />
-                <Skeleton className="h-6 w-12" />
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : jobs.length === 0 && !error ? (
-        <div className="panel">
-          <EmptyState icon={<SearchX size={20} />} title="No jobs match these filters">
-            <button onClick={reset} className="text-violet hover:underline">
-              Reset filters
-            </button>
+      {error ? (
+        <ErrorState message={error} onRetry={reload} />
+      ) : loading && !data ? (
+        <JobGridSkeleton count={4} />
+      ) : jobs.length === 0 ? (
+        <div className="rounded-panel border border-border bg-surface">
+          <EmptyState
+            icon={<SearchX size={20} />}
+            title="No jobs match these filters"
+            action={
+              filtersActive && (
+                <Button size="sm" onClick={reset}>
+                  Reset filters
+                </Button>
+              )
+            }
+          >
+            {eligibleOnly && all.length > 0 ? "Try showing all jobs, or lower the minimum match." : "Try a different search or location."}
           </EmptyState>
         </div>
       ) : (
-        <div className={`grid items-start gap-4 transition-opacity md:grid-cols-2 xl:grid-cols-3 ${searching && data ? "opacity-50" : ""}`}>
+        <div className={cn("grid items-stretch gap-4 transition-opacity md:grid-cols-2 2xl:grid-cols-3", searching && data && "opacity-60")}>
           {jobs.map((j, i) => (
-            <JobCard key={j.job_id} job={j} index={i} saved={saved.has(j.job_id)} onSaved={() => setRefresh((r) => r + 1)} />
+            <FadeIn key={j.job_id} index={i} className="flex">
+              <JobMatchCard job={j} saved={saved.has(j.job_id)} onSaved={() => setRefresh((r) => r + 1)} className="w-full" />
+            </FadeIn>
           ))}
         </div>
       )}

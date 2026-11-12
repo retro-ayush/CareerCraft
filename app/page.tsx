@@ -2,14 +2,19 @@
 
 import Link from "next/link";
 import { useMemo, useState, useSyncExternalStore } from "react";
-import { ArrowRight, Bookmark, Briefcase, Gauge, GraduationCap, MapPin, Send, Sparkles, TrendingUp } from "lucide-react";
+import { ArrowRight, Clock, MapPin, Sparkles, UserRound } from "lucide-react";
 import { endpoints, jobsUrl } from "@/lib/apiClient";
 import type { Insights, JobMatch, Profile, ShortlistItem } from "@/lib/types";
 import AgentChat from "@/components/AgentChat";
-import JobCard from "@/components/JobCard";
 import ShortlistPanel from "@/components/ShortlistPanel";
-import { Card, CountUp, ErrorBox, Skeleton, SkillChip, useApi } from "@/components/ui";
-
+import { Button } from "@/components/ui/button";
+import { FadeIn } from "@/components/cc/FadeIn";
+import { JobMatchCard } from "@/components/cc/JobMatchCard";
+import { Panel } from "@/components/cc/Panel";
+import { SkillChip } from "@/components/cc/SkillChip";
+import { EmptyState, ErrorState, JobGridSkeleton, Skeleton } from "@/components/cc/states";
+import { useApi } from "@/components/cc/hooks";
+import { initials, plural } from "@/components/cc/format";
 
 const noopSubscribe = () => () => undefined;
 
@@ -40,75 +45,67 @@ export default function DashboardPage() {
   const recommendations = [...eligible].sort((a, b) => b.match_score - a.match_score || a.days_left - b.days_left).slice(0, 6);
 
   const stats = [
-    { label: "Matching jobs", value: insights.data?.eligible_jobs, hint: insights.data ? `of ${insights.data.open_jobs} open roles you're eligible for` : "", icon: Briefcase, tint: "text-violet bg-violet/10", href: "/jobs" },
-    { label: "Average match", value: avgScore, suffix: "%", hint: "across your eligible jobs", icon: Gauge, tint: "text-blue bg-blue/10", href: "/jobs" },
-    { label: "Saved opportunities", value: items?.length, hint: insights.data ? `${insights.data.strong_matches} strong matches available` : "", icon: Bookmark, tint: "text-good bg-good/10", href: "/shortlist" },
-    { label: "In progress", value: inProgress, hint: "applied or interviewing", icon: Send, tint: "text-plum bg-plum/10", href: "/shortlist" },
+    { label: "Eligible jobs", value: insights.data?.eligible_jobs, hint: insights.data ? `of ${insights.data.open_jobs} open roles` : "", href: "/jobs" },
+    { label: "Average match", value: avgScore, suffix: "%", hint: "across your eligible jobs", href: "/jobs" },
+    { label: "Shortlisted", value: items?.length, hint: insights.data ? `${insights.data.strong_matches} strong matches available` : "", href: "/shortlist" },
+    { label: "In progress", value: inProgress, hint: "applied or interviewing", href: "/shortlist" },
   ];
 
   const p = profile.data?.profile;
   const firstName = p?.name.split(" ")[0] ?? "Divya";
+  const refresh = () => setRefreshKey((k) => k + 1);
 
   return (
-    <div className="space-y-6">
-      {/* Greeting */}
-      <div className="animate-enter flex flex-wrap items-end justify-between gap-4">
+    <div className="space-y-8">
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="flex items-center gap-2 text-[13px] text-muted">
-            <span className="h-1.5 w-1.5 rounded-full bg-good shadow-[0_0_8px_var(--color-good)]" /> Live data from Supabase
-          </p>
-          <h1 className="mt-2 text-[28px] font-semibold tracking-[-0.03em] md:text-[34px]">
-            {hello}, {firstName} <span className="inline-block origin-[70%_70%] animate-[wave_2.2s_ease-in-out_1]">👋</span>
+          <h1 className="text-[28px] font-bold leading-9 text-ink md:text-h1">
+            {hello}, {firstName}
           </h1>
-          <p className="mt-1 text-[15px] text-muted">Your next career opportunity starts here.</p>
+          <p className="mt-2 text-body text-ink-muted">Here&rsquo;s where your job search stands today.</p>
         </div>
         {insights.data && insights.data.closing_this_week > 0 && (
-          <Link href="/jobs" className="group flex items-center gap-2 rounded-xl border border-warn/25 bg-warn/10 px-3.5 py-2 text-[13px] text-warn transition hover:bg-warn/15">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-warn" />
-            {insights.data.closing_this_week} good fit{insights.data.closing_this_week > 1 ? "s" : ""} close this week
-            <ArrowRight size={14} className="transition-transform group-hover:translate-x-0.5" />
+          <Link href="/jobs" className="flex h-10 items-center gap-2 rounded-card border border-border bg-surface px-4 text-small text-ink transition-colors hover:bg-surface-2">
+            <Clock size={16} className="text-ink-muted" />
+            {plural(insights.data.closing_this_week, "good fit")} close this week
+            <ArrowRight size={16} className="text-ink-muted" />
           </Link>
         )}
       </div>
 
-      {/* Stats */}
       {insights.error ? (
-        <ErrorBox message={insights.error} />
+        <ErrorState message={insights.error} onRetry={insights.reload} />
       ) : (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {stats.map((s, i) => (
-            <Link
-              key={s.label}
-              href={s.href}
-              style={{ animationDelay: `${i * 60}ms` }}
-              className="panel animate-enter group relative overflow-hidden p-4 transition duration-300 hover:-translate-y-0.5 hover:border-edge-strong md:p-5"
-            >
-              <div className="flex items-center justify-between">
-                <p className="text-[13px] text-muted">{s.label}</p>
-                <span className={`grid h-8 w-8 place-items-center rounded-lg ${s.tint} transition-transform group-hover:scale-110`}>
-                  <s.icon size={16} />
-                </span>
-              </div>
-              <p className="mt-3 text-[30px] font-semibold leading-none tracking-[-0.03em] tabular-nums md:text-[34px]">
-                <CountUp value={s.value} suffix={s.suffix} />
-              </p>
-              <p className="mt-2 truncate text-[12px] text-muted">{s.hint || " "}</p>
-            </Link>
+            <FadeIn key={s.label} index={i}>
+              <Link href={s.href} className="block h-full rounded-card border border-border bg-surface p-4 transition-colors hover:bg-surface-2 md:p-5">
+                <p className="text-small text-ink-muted">{s.label}</p>
+                {s.value == null ? (
+                  <Skeleton className="mt-2 h-8 w-16" />
+                ) : (
+                  <p className="mt-2 font-mono text-stat font-bold tabular-nums text-ink">
+                    {s.value}
+                    {s.suffix}
+                  </p>
+                )}
+                <p className="mt-1 truncate text-[12px] leading-4 text-ink-muted">{s.hint || " "}</p>
+              </Link>
+            </FadeIn>
           ))}
         </div>
       )}
 
-      {/* Assistant + side column */}
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <AgentChat onDataChanged={() => setRefreshKey((k) => k + 1)} />
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <AgentChat onDataChanged={refresh} />
 
-        <div className="space-y-5">
-          <Card
-            icon={<GraduationCap size={16} />}
+        <div className="space-y-6">
+          <Panel
+            icon={<UserRound size={20} />}
             title="Your profile"
             action={
-              <Link href="/profile" className="group flex items-center gap-1 text-[12.5px] text-muted transition hover:text-fg">
-                Edit <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" />
+              <Link href="/profile" className="flex items-center gap-1 rounded-card py-1 text-small text-ink-muted transition-colors hover:text-ink">
+                Edit <ArrowRight size={16} />
               </Link>
             }
           >
@@ -116,90 +113,89 @@ export default function DashboardPage() {
               {p ? (
                 <>
                   <div className="flex items-center gap-3">
-                    <span className="grid h-11 w-11 place-items-center rounded-full bg-gradient-to-br from-violet to-blue text-[14px] font-semibold text-white">
-                      {p.name
-                        .split(" ")
-                        .map((w) => w[0])
-                        .join("")
-                        .slice(0, 2)}
-                    </span>
+                    <span className="grid size-11 place-items-center rounded-full border border-border bg-surface-2 text-small font-semibold text-ink">{initials(p.name)}</span>
                     <div className="min-w-0">
-                      <p className="font-medium">{p.name}</p>
-                      <p className="text-[12.5px] text-muted">
+                      <p className="font-medium text-ink">{p.name}</p>
+                      <p className="text-small text-ink-muted">
                         {p.degree} {p.branch} · Class of {p.grad_year}
                       </p>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="rounded-xl border border-edge bg-raised/60 p-3">
-                      <p className="text-[11.5px] text-muted">CGPA</p>
-                      <p className="mt-1 text-[20px] font-semibold tabular-nums">{p.cgpa}</p>
+                  <dl className="grid grid-cols-2 gap-2">
+                    <div className="rounded-card border border-border p-3">
+                      <dt className="text-[12px] text-ink-muted">CGPA</dt>
+                      <dd className="mt-1 font-mono text-[20px] font-bold tabular-nums text-ink">{p.cgpa}</dd>
                     </div>
-                    <div className="rounded-xl border border-edge bg-raised/60 p-3">
-                      <p className="text-[11.5px] text-muted">Skills</p>
-                      <p className="mt-1 text-[20px] font-semibold tabular-nums">{p.skills.length}</p>
+                    <div className="rounded-card border border-border p-3">
+                      <dt className="text-[12px] text-ink-muted">Skills</dt>
+                      <dd className="mt-1 font-mono text-[20px] font-bold tabular-nums text-ink">{p.skills.length}</dd>
                     </div>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {p.skills.slice(0, 8).map((s) => (
-                      <SkillChip key={s} skill={s} />
+                  </dl>
+                  <div className="flex flex-wrap gap-2">
+                    {p.skills.slice(0, 6).map((s) => (
+                      <SkillChip key={s} skill={s} variant="have" />
                     ))}
-                    {p.skills.length > 8 && <SkillChip skill={`+${p.skills.length - 8}`} />}
+                    {p.skills.length > 6 && <span className="inline-flex h-7 items-center text-small text-ink-muted">and {p.skills.length - 6} more</span>}
                   </div>
-                  <p className="flex items-center gap-1.5 text-[12.5px] text-muted">
-                    <MapPin size={13} /> Prefers {p.preferred_cities.join(", ") || "any city"}
+                  <p className="flex items-center gap-1.5 text-small text-ink-muted">
+                    <MapPin size={16} /> Prefers {p.preferred_cities.join(", ") || "any city"}
                   </p>
                 </>
               ) : profile.error ? (
-                <ErrorBox message={profile.error} />
+                <ErrorState message={profile.error} onRetry={profile.reload} />
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-3" role="status" aria-label="Loading profile">
                   <Skeleton className="h-11 w-2/3" />
                   <Skeleton className="h-16 w-full" />
-                  <Skeleton className="h-6 w-full" />
+                  <Skeleton className="h-7 w-full" />
                 </div>
               )}
             </div>
-          </Card>
+          </Panel>
 
-          <ShortlistPanel items={items ?? null} loading={shortlist.loading} error={shortlist.error} />
+          <ShortlistPanel items={items ?? null} loading={shortlist.loading} error={shortlist.error} onRetry={shortlist.reload} />
         </div>
       </div>
 
-      {/* Recommendations */}
-      <section className="space-y-4">
+      <section className="space-y-4" aria-labelledby="recommended-title">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 className="flex items-center gap-2 text-[18px] font-semibold tracking-[-0.02em]">
-              <TrendingUp size={18} className="text-violet" /> Recommended for you
+            <h2 id="recommended-title" className="text-h2 font-semibold text-ink">
+              Recommended for you
             </h2>
-            <p className="mt-0.5 text-[13.5px] text-muted">Your highest-scoring eligible roles, live from the job board.</p>
+            <p className="mt-1 text-small text-ink-muted">Your highest-scoring eligible roles.</p>
           </div>
-          <Link href="/jobs" className="btn-ghost text-[13px]">
-            Explore all jobs <ArrowRight size={14} />
-          </Link>
+          <Button asChild size="sm">
+            <Link href="/jobs">
+              Explore all jobs <ArrowRight />
+            </Link>
+          </Button>
         </div>
-        {jobs.error && <ErrorBox message={jobs.error} />}
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {jobs.loading && !jobs.data
-            ? [0, 1, 2].map((i) => (
-                <div key={i} className="panel space-y-4 p-5">
-                  <div className="flex gap-3">
-                    <Skeleton className="h-10 w-10 rounded-xl" />
-                    <div className="flex-1 space-y-2">
-                      <Skeleton className="h-3 w-1/3" />
-                      <Skeleton className="h-4 w-2/3" />
-                    </div>
-                  </div>
-                  <Skeleton className="h-5 w-full" />
-                  <Skeleton className="h-8 w-1/2" />
-                </div>
-              ))
-            : recommendations.map((j, i) => <JobCard key={j.job_id} job={j} index={i} saved={savedIds.has(j.job_id)} onSaved={() => setRefreshKey((k) => k + 1)} />)}
-        </div>
-        {!jobs.loading && recommendations.length === 0 && !jobs.error && (
-          <div className="panel flex items-center gap-3 p-5 text-[13.5px] text-muted">
-            <Sparkles size={16} className="text-violet" /> No eligible roles right now. Try adding skills on your profile.
+        {jobs.error ? (
+          <ErrorState message={jobs.error} onRetry={jobs.reload} />
+        ) : jobs.loading && !jobs.data ? (
+          <JobGridSkeleton count={2} />
+        ) : recommendations.length === 0 ? (
+          <div className="rounded-panel border border-border bg-surface">
+            <EmptyState
+              icon={<Sparkles size={20} />}
+              title="No eligible roles right now"
+              action={
+                <Button asChild size="sm">
+                  <Link href="/profile">Add skills to your profile</Link>
+                </Button>
+              }
+            >
+              New skills re-score every job instantly.
+            </EmptyState>
+          </div>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2">
+            {recommendations.map((j, i) => (
+              <FadeIn key={j.job_id} index={i} className="flex">
+                <JobMatchCard job={j} saved={savedIds.has(j.job_id)} onSaved={refresh} className="w-full" />
+              </FadeIn>
+            ))}
           </div>
         )}
       </section>

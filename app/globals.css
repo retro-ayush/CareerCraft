@@ -1,183 +1,143 @@
 @import "tailwindcss";
 
 /*
- * CareerCraft design tokens (dark).
- * Use the semantic names (bg-base, bg-panel, text-fg, border-edge, text-violet ...) instead of raw colours.
+ * CareerCraft design tokens.
+ * Raw values live in CSS variables (dark is the default; light applies with <html data-theme="light">).
+ * The @theme block maps them to Tailwind utilities: bg-surface, text-ink-muted, border-border, bg-accent-soft ...
+ *
+ * accent = "ready / eligible" (primary button, matches, focus ring)
+ * warn   = skill gaps, never errors
+ * danger = real errors only
  */
-@theme inline {
-  --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
-}
-
-@theme {
-  --color-base: #07080e;
-  --color-panel: #0d0f18;
-  --color-raised: #131624;
-  --color-hover: #1a1e30;
-  --color-edge: rgb(255 255 255 / 0.07);
-  --color-edge-strong: rgb(255 255 255 / 0.13);
-  --color-fg: #eceef6;
-  --color-fg-2: #b4b8cc;
-  --color-muted: #7d8299;
-  --color-faint: #4c5068;
-
-  --color-violet: #8b7cf6;
-  --color-violet-strong: #7461f0;
-  --color-blue: #4f8cff;
-  --color-good: #3ecf8e;
-  --color-warn: #f5a524;
-  --color-bad: #f2555a;
-  --color-plum: #c084fc;
-
-  --animate-enter: enter 0.35s cubic-bezier(0.2, 0.7, 0.2, 1) both;
-  --animate-fade: fade 0.25s ease-out both;
-  --animate-shimmer: shimmer 1.6s linear infinite;
-  --animate-toast: toast-in 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  --animate-drawer: drawer-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  --animate-sheet: sheet-in 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  --animate-shake: shake 0.35s ease-in-out;
-  --animate-float: float 8s ease-in-out infinite;
-
-  @keyframes enter {
-    from { opacity: 0; transform: translateY(6px); }
-    to { opacity: 1; transform: none; }
-  }
-  @keyframes fade {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-  @keyframes shimmer {
-    from { background-position: 200% 0; }
-    to { background-position: -200% 0; }
-  }
-  @keyframes toast-in {
-    from { opacity: 0; transform: translateY(8px) scale(0.97); }
-    to { opacity: 1; transform: none; }
-  }
-  @keyframes drawer-in {
-    from { opacity: 0; transform: translateX(32px); }
-    to { opacity: 1; transform: none; }
-  }
-  @keyframes sheet-in {
-    from { transform: translateX(-100%); }
-    to { transform: none; }
-  }
-  @keyframes shake {
-    0%, 100% { transform: translateX(0); }
-    25% { transform: translateX(-6px); }
-    75% { transform: translateX(6px); }
-  }
-  @keyframes wave {
-    0%, 60%, 100% { transform: rotate(0deg); }
-    10%, 30% { transform: rotate(14deg); }
-    20% { transform: rotate(-8deg); }
-    40% { transform: rotate(-4deg); }
-    50% { transform: rotate(10deg); }
-  }
-  @keyframes float {
-    0%, 100% { transform: translate3d(0, 0, 0); }
-    50% { transform: translate3d(0, -14px, 0); }
-  }
-}
-
-html {
+:root {
+  --bg: #07080e;
+  --surface: #10121a;
+  --surface-2: #181b26;
+  --border: #2a2f3d;
+  --border-strong: #4a5163;
+  --ink: #eef0f5;
+  --ink-muted: #9aa0b0;
+  --accent: #b8f55a;
+  --accent-ink: #0b1200;
+  --accent-soft: #1d2b10;
+  --warn: #ffb547;
+  --warn-soft: #2c2110;
+  --danger: #ff7a70;
   color-scheme: dark;
 }
 
+:root[data-theme="light"] {
+  --bg: #f7f7f4;
+  --surface: #ffffff;
+  --surface-2: #f0f0ea;
+  --border: #d9d9d0;
+  --border-strong: #8c8f97;
+  --ink: #0e1016;
+  --ink-muted: #555a66;
+  --accent: #3d7a0a;
+  --accent-ink: #ffffff;
+  --accent-soft: #e6f3d3;
+  --warn: #8f5300;
+  --warn-soft: #fcefd9;
+  --danger: #b42318;
+  color-scheme: light;
+}
+
+@theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-bricolage), var(--font-inter), ui-sans-serif, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
+
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+}
+
+@theme {
+  /* Type scale: size / line-height */
+  --text-display: 3.5rem;
+  --text-display--line-height: 3.75rem;
+  --text-h1: 2.25rem;
+  --text-h1--line-height: 2.625rem;
+  --text-h2: 1.5rem;
+  --text-h2--line-height: 1.875rem;
+  --text-body: 1rem;
+  --text-body--line-height: 1.5rem;
+  --text-small: 0.875rem;
+  --text-small--line-height: 1.25rem;
+  --text-stat: 1.75rem;
+  --text-stat--line-height: 2rem;
+
+  /* Radius: inputs 6, buttons/cards 10, panels 16, chips full */
+  --radius-input: 6px;
+  --radius-card: 10px;
+  --radius-panel: 16px;
+
+  --animate-overlay-in: overlay-in 180ms ease-out both;
+  --animate-dialog-in: dialog-in 180ms ease-out both;
+  --animate-sheet-right: sheet-right 200ms ease-out both;
+  --animate-sheet-left: sheet-left 200ms ease-out both;
+
+  @keyframes overlay-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes dialog-in {
+    /* Centering comes from the translate-* utilities (CSS `translate`); this only nudges via `transform`. */
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes sheet-right {
+    from { opacity: 0; transform: translateX(16px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes sheet-left {
+    from { opacity: 0; transform: translateX(-16px); }
+    to { opacity: 1; transform: none; }
+  }
+}
+
 body {
-  @apply bg-base text-fg antialiased;
-  font-feature-settings: "ss01", "cv11";
+  @apply bg-bg font-sans text-body text-ink antialiased;
+}
+
+h1, h2, h3 {
+  @apply font-display;
 }
 
 ::selection {
-  background: rgb(139 124 246 / 0.35);
+  background: var(--accent-soft);
+  color: var(--ink);
 }
 
+/* Visible 2px accent focus ring with 2px offset on everything interactive. */
 :focus-visible {
-  @apply outline-2 outline-offset-2 outline-violet;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
-/* Panels: the standard card surface. */
-.panel {
-  @apply rounded-2xl border border-edge bg-panel;
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.03);
-}
-
-/* Glass: used only for floating layers (sticky top bar, toasts, login card). */
-.glass {
-  background: rgb(13 15 24 / 0.72);
-  backdrop-filter: blur(16px) saturate(140%);
-  -webkit-backdrop-filter: blur(16px) saturate(140%);
-  @apply border border-edge;
-}
-
-/* A thin gradient ring around an element (used on the primary chat panel and focused input). */
-.ring-gradient {
-  position: relative;
-}
-.ring-gradient::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  padding: 1px;
-  border-radius: inherit;
-  background: linear-gradient(140deg, rgb(139 124 246 / 0.55), rgb(79 140 255 / 0.15) 40%, transparent 70%);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
-}
-
-.skeleton {
-  @apply rounded-md;
-  background: linear-gradient(90deg, #12152200 0%, rgb(255 255 255 / 0.06) 50%, #12152200 100%), #121522;
-  background-size: 200% 100%;
-  animation: var(--animate-shimmer);
-}
-
-.eyebrow {
-  @apply text-[11px] font-medium uppercase tracking-[0.08em] text-muted;
-}
-
-.field {
-  @apply w-full rounded-xl border border-edge bg-raised px-3.5 py-2.5 text-sm text-fg outline-none transition placeholder:text-faint hover:border-edge-strong focus:border-violet/60 focus:ring-4 focus:ring-violet/10;
-}
-
-.btn {
-  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-white transition active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40;
-  background: linear-gradient(180deg, #8b7cf6, #6f5cf0);
-  box-shadow: 0 1px 0 rgb(255 255 255 / 0.2) inset, 0 8px 24px -10px rgb(116 97 240 / 0.8);
-}
-.btn:hover {
-  filter: brightness(1.08);
-}
-
-.btn-ghost {
-  @apply inline-flex items-center justify-center gap-2 rounded-xl border border-edge bg-raised px-3.5 py-2 text-sm text-fg-2 transition hover:border-edge-strong hover:bg-hover hover:text-fg active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40;
-}
-
-.chip {
-  @apply inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-xs;
+/* Lucide icons: 1.5px stroke everywhere (CSS overrides the SVG presentation attribute). */
+svg.lucide {
+  stroke-width: 1.5;
 }
 
 .thin-scroll {
   scrollbar-width: thin;
-  scrollbar-color: rgb(255 255 255 / 0.12) transparent;
-}
-
-/* Soft glow behind page content. Decorative only. */
-.page-glow {
-  pointer-events: none;
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 520px;
-  background:
-    radial-gradient(600px 260px at 18% -40px, rgb(116 97 240 / 0.16), transparent 70%),
-    radial-gradient(520px 240px at 82% -60px, rgb(79 140 255 / 0.1), transparent 70%);
+  scrollbar-color: var(--border) transparent;
 }
 
 input[type="range"] {
-  accent-color: var(--color-violet);
+  accent-color: var(--accent);
 }
 
 @media (prefers-reduced-motion: reduce) {

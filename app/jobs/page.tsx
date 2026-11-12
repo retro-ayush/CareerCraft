@@ -1,110 +1,168 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Loader2, Search, SearchX, SlidersHorizontal, X } from "lucide-react";
 import type { JobMatch } from "@/lib/careermatch";
 import type { ShortlistItem } from "@/lib/shortlist";
-import { Card, DeadlineChip, ErrorBox, ScoreBar, SkillChip, useApi } from "@/components/ui";
+import JobCard from "@/components/JobCard";
+import { EmptyState, ErrorBox, PageHeader, Pill, Skeleton, useApi, useDebounced } from "@/components/ui";
 
 const CITIES = ["", "Chennai", "Bengaluru", "Hyderabad", "Pune", "Coimbatore", "Remote"];
+const SORTS = { score: "Best match", deadline: "Closing soon", gap: "Fewest skill gaps" } as const;
+type SortKey = keyof typeof SORTS;
 
-/** Job browser: every open job scored for the student, with eligibility reasons. */
+/** Explore jobs: every open job scored for the student, with filters, sorting and eligibility. */
 export default function JobsPage() {
   const [city, setCity] = useState("");
   const [q, setQ] = useState("");
   const [jobType, setJobType] = useState("");
-  const [showIneligible, setShowIneligible] = useState(false);
+  const [sort, setSort] = useState<SortKey>("score");
+  const [minScore, setMinScore] = useState(0);
+  const [eligibleOnly, setEligibleOnly] = useState(true);
   const [refresh, setRefresh] = useState(0);
-  const [msg, setMsg] = useState("");
 
+  const debouncedQ = useDebounced(q, 300);
   const url = useMemo(() => {
-    const p = new URLSearchParams({ city, q, job_type: jobType });
+    const p = new URLSearchParams({ city, q: debouncedQ, job_type: jobType });
     return `/api/jobs?${p.toString()}`;
-  }, [city, q, jobType]);
+  }, [city, debouncedQ, jobType]);
 
   const { data, error, loading } = useApi<{ jobs: JobMatch[] }>(url);
   const shortlist = useApi<{ shortlist: ShortlistItem[] }>("/api/shortlist", refresh);
   const saved = new Set((shortlist.data?.shortlist ?? []).map((s) => s.job_id));
 
-  const jobs = (data?.jobs ?? []).filter((j) => showIneligible || j.eligible);
-  const hidden = (data?.jobs ?? []).filter((j) => !j.eligible).length;
+  const all = useMemo(() => data?.jobs ?? [], [data]);
+  const hidden = all.filter((j) => !j.eligible).length;
+  const jobs = useMemo(() => {
+    const list = all.filter((j) => (!eligibleOnly || j.eligible) && j.match_score >= minScore);
+    if (sort === "deadline") return [...list].sort((a, b) => a.days_left - b.days_left);
+    if (sort === "gap") return [...list].sort((a, b) => a.missing_required.length - b.missing_required.length || b.match_score - a.match_score);
+    return [...list].sort((a, b) => Number(b.eligible) - Number(a.eligible) || b.match_score - a.match_score);
+  }, [all, eligibleOnly, minScore, sort]);
 
-  async function save(job_id: number) {
-    setMsg("");
-    const res = await fetch("/api/shortlist", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ job_id }),
-    });
-    const json = await res.json();
-    setMsg(res.ok ? `Saved job #${job_id} to your shortlist.` : json.error);
-    setRefresh((r) => r + 1);
+  const searching = loading || q !== debouncedQ;
+  const filtersActive = Boolean(q || city || jobType || minScore || !eligibleOnly);
+
+  function reset() {
+    setQ("");
+    setCity("");
+    setJobType("");
+    setMinScore(0);
+    setEligibleOnly(true);
   }
 
   return (
-    <main className="mx-auto max-w-6xl space-y-4 p-4 md:p-6">
-      <Card title="Jobs for you" subtitle="Scored 0-100: 70% required skills · 20% nice-to-have · 10% preferred city">
-        <div className="grid gap-2 p-4 sm:grid-cols-4">
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Role or skill, e.g. data analyst"
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 sm:col-span-2"
-          />
-          <select value={city} onChange={(e) => setCity(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
-            {CITIES.map((c) => (
-              <option key={c} value={c}>{c || "All cities"}</option>
-            ))}
-          </select>
-          <select value={jobType} onChange={(e) => setJobType(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
-            <option value="">Full-time + Internship</option>
-            <option value="Full-time">Full-time</option>
-            <option value="Internship">Internship</option>
-          </select>
-          <label className="flex items-center gap-2 text-sm text-slate-600 sm:col-span-4">
-            <input type="checkbox" checked={showIneligible} onChange={(e) => setShowIneligible(e.target.checked)} />
-            Show jobs I am not eligible for ({hidden} hidden by the CGPA / branch rule)
+    <div className="space-y-6">
+      <PageHeader title="Explore jobs" subtitle="Every open role, scored against your skills: 70% required skills, 20% nice-to-have, 10% preferred city." />
+
+      {/* Filters */}
+      <section className="panel animate-enter space-y-4 p-4 md:p-5">
+        <div className="flex flex-col gap-3 md:flex-row">
+          <label className="relative flex-1">
+            <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by role or skill, e.g. data analyst, react" className="field !pl-10 !pr-9" />
+            {q && (
+              <button onClick={() => setQ("")} aria-label="Clear search" className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-muted hover:text-fg">
+                <X size={15} />
+              </button>
+            )}
           </label>
-        </div>
-      </Card>
-
-      {msg && <p className="rounded-lg bg-indigo-50 p-3 text-sm text-indigo-800">{msg}</p>}
-      {error && <ErrorBox message={error} />}
-      {loading && !data && <p className="text-sm text-slate-500">Loading jobs...</p>}
-      {!loading && jobs.length === 0 && !error && <p className="text-sm text-slate-500">No jobs match these filters.</p>}
-
-      <div className="grid gap-3 md:grid-cols-2">
-        {jobs.map((j) => (
-          <div key={j.job_id} className={`rounded-xl border bg-white p-4 ${j.eligible ? "border-slate-200" : "border-dashed border-slate-300 opacity-70"}`}>
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <p className="font-semibold">{j.title}</p>
-                <p className="text-sm text-slate-500">
-                  #{j.job_id} · {j.company} · {j.city} · {j.work_mode} · {j.job_type}
-                </p>
-                <p className="text-xs text-slate-500">{j.salary_lpa}</p>
-              </div>
-              <ScoreBar score={j.match_score} />
-            </div>
-            <div className="mt-2 flex flex-wrap gap-1">
-              {j.matched_skills.map((s) => <SkillChip key={s} skill={s} tone="good" />)}
-              {j.missing_required.map((s) => <SkillChip key={s} skill={`need ${s}`} tone="missing" />)}
-              {j.missing_nice_to_have.map((s) => <SkillChip key={s} skill={`+ ${s}`} />)}
-            </div>
-            {!j.eligible && <p className="mt-2 text-xs text-rose-600">Not eligible: {j.ineligible_reasons.join("; ")}</p>}
-            <div className="mt-3 flex items-center justify-between">
-              <DeadlineChip days={j.days_left} />
-              {j.eligible &&
-                (saved.has(j.job_id) ? (
-                  <span className="text-xs text-emerald-700">✓ In shortlist</span>
-                ) : (
-                  <button onClick={() => save(j.job_id)} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs text-white hover:bg-indigo-700">
-                    Save to shortlist
-                  </button>
-                ))}
-            </div>
+          <div className="grid grid-cols-2 gap-3 md:flex">
+            <select value={jobType} onChange={(e) => setJobType(e.target.value)} className="field md:!w-44">
+              <option value="">All job types</option>
+              <option value="Full-time">Full-time</option>
+              <option value="Internship">Internship</option>
+            </select>
+            <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="field md:!w-48">
+              {Object.entries(SORTS).map(([k, v]) => (
+                <option key={k} value={k}>
+                  Sort: {v}
+                </option>
+              ))}
+            </select>
           </div>
-        ))}
+        </div>
+
+        <div className="thin-scroll -mx-1 flex gap-1 overflow-x-auto px-1 pb-0.5">
+          {CITIES.map((c) => (
+            <Pill key={c} active={city === c} onClick={() => setCity(c)}>
+              {c || "All locations"}
+            </Pill>
+          ))}
+        </div>
+
+        <div className="flex flex-col gap-4 border-t border-edge pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <label className="flex flex-1 items-center gap-3 text-[13px] text-fg-2 sm:max-w-sm">
+            <SlidersHorizontal size={15} className="shrink-0 text-muted" />
+            <span className="shrink-0">Min match</span>
+            <input type="range" min={0} max={100} step={5} value={minScore} onChange={(e) => setMinScore(Number(e.target.value))} className="flex-1" aria-label="Minimum match score" />
+            <span className="w-10 text-right font-mono tabular-nums text-fg">{minScore}%</span>
+          </label>
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={eligibleOnly}
+              onClick={() => setEligibleOnly(!eligibleOnly)}
+              className="flex items-center gap-2.5 text-[13px] text-fg-2"
+            >
+              <span className={`relative h-5 w-9 rounded-full transition ${eligibleOnly ? "bg-violet" : "bg-white/[0.12]"}`}>
+                <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${eligibleOnly ? "left-[18px]" : "left-0.5"}`} />
+              </span>
+              Eligible only <span className="font-mono text-[12px] text-muted">({hidden} hidden)</span>
+            </button>
+            {filtersActive && (
+              <button onClick={reset} className="text-[13px] text-violet hover:underline">
+                Reset
+              </button>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <div className="flex items-center justify-between text-[13px] text-muted">
+        <span>{searching ? "Searching…" : `${jobs.length} job${jobs.length === 1 ? "" : "s"} found`}</span>
+        {searching && <Loader2 size={15} className="animate-spin text-violet" />}
       </div>
-    </main>
+
+      {error && <ErrorBox message={error} />}
+
+      {loading && !data ? (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="panel space-y-4 p-5">
+              <div className="flex gap-3">
+                <Skeleton className="h-10 w-10 rounded-xl" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-3 w-1/3" />
+                  <Skeleton className="h-4 w-2/3" />
+                </div>
+                <Skeleton className="h-12 w-12 rounded-full" />
+              </div>
+              <Skeleton className="h-4 w-3/4" />
+              <div className="flex gap-1.5">
+                <Skeleton className="h-6 w-14" />
+                <Skeleton className="h-6 w-16" />
+                <Skeleton className="h-6 w-12" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : jobs.length === 0 && !error ? (
+        <div className="panel">
+          <EmptyState icon={<SearchX size={20} />} title="No jobs match these filters">
+            <button onClick={reset} className="text-violet hover:underline">
+              Reset filters
+            </button>
+          </EmptyState>
+        </div>
+      ) : (
+        <div className={`grid items-start gap-4 transition-opacity md:grid-cols-2 xl:grid-cols-3 ${searching && data ? "opacity-50" : ""}`}>
+          {jobs.map((j, i) => (
+            <JobCard key={j.job_id} job={j} index={i} saved={saved.has(j.job_id)} onSaved={() => setRefresh((r) => r + 1)} />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

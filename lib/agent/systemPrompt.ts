@@ -1,5 +1,5 @@
 import { todayInIndia, weekdayInIndia } from "../dates";
-import { CURRENT_STUDENT_ID } from "../careermatch";
+import { CURRENT_STUDENT_ID } from "../constants";
 
 /* System prompt for CareerMatch (PS6 Job Match Agent). */
 export function buildSystemPrompt(): string {

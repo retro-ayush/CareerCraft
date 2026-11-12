@@ -1,23 +1,27 @@
 import { NextResponse } from "next/server";
-import { buildSkillGapPlan, countStrongMatches, evaluateJob, getOpenJobs, getProfile } from "@/lib/careermatch";
-import { apiError } from "@/lib/apiError";
+import { buildSkillGapPlan, evaluateJob, getOpenJobs, getProfile } from "@/lib/careermatch";
+import { CLOSING_SOON_DAYS, GOOD_FIT_SCORE } from "@/lib/constants";
+import { todayInIndia } from "@/lib/dates";
+import { handle } from "@/lib/http";
+import { isStrongMatch } from "@/lib/scoring";
+import type { Insights } from "@/lib/types";
 
 export const runtime = "nodejs";
 
-/** GET /api/insights -> dashboard numbers + Skill ROI plan for the student */
-export async function GET() {
-  try {
-    const [profile, jobs] = await Promise.all([getProfile(), getOpenJobs()]);
-    const matches = jobs.map((j) => evaluateJob(j, profile));
-    const eligible = matches.filter((m) => m.eligible);
-    return NextResponse.json({
-      open_jobs: jobs.length,
-      eligible_jobs: eligible.length,
-      strong_matches: countStrongMatches(jobs, profile),
-      closing_this_week: eligible.filter((m) => m.days_left <= 7 && m.match_score >= 50).length,
-      skill_plan: buildSkillGapPlan(jobs, profile, 6),
-    });
-  } catch (err) {
-    return apiError(err);
-  }
-}
+const SKILL_PLAN_SIZE = 6;
+
+/** GET /api/insights -> dashboard numbers and the Skill ROI plan for the student. */
+export const GET = handle("insights.get", async () => {
+  const [profile, jobs] = await Promise.all([getProfile(), getOpenJobs()]);
+  const today = todayInIndia();
+  const eligible = jobs.map((j) => evaluateJob(j, profile, undefined, today)).filter((m) => m.eligible);
+
+  const body: Insights = {
+    open_jobs: jobs.length,
+    eligible_jobs: eligible.length,
+    strong_matches: eligible.filter(isStrongMatch).length,
+    closing_this_week: eligible.filter((m) => m.days_left <= CLOSING_SOON_DAYS && m.match_score >= GOOD_FIT_SCORE).length,
+    skill_plan: buildSkillGapPlan(jobs, profile, SKILL_PLAN_SIZE, today),
+  };
+  return NextResponse.json(body);
+});

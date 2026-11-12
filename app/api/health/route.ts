@@ -1,17 +1,20 @@
 import { NextResponse } from "next/server";
+import { activeLlmProvider, optionalEnv } from "@/lib/env";
+import type { HealthStatus } from "@/lib/types";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-/** GET /api/health  -> shows which settings are missing (never shows the values). */
+/** GET /api/health -> which settings are present (never their values) and the active LLM provider. */
 export async function GET() {
-  // GEMINI_MODEL is optional (it has a default), so it is not checked here.
-  const has = (n: string) => Boolean(process.env[n]?.trim());
+  const has = (name: string) => Boolean(optionalEnv(name));
   const settings = {
+    // GEMINI_MODEL / GROQ_MODEL are optional (they have defaults), so they are not checked.
     LLM_KEY: has("GROQ_API_KEY") || has("GEMINI_API_KEY"),
     SUPABASE_URL: has("SUPABASE_URL"),
     SUPABASE_SECRET_KEY: has("SUPABASE_SECRET_KEY"),
     APP_PASSCODE: has("APP_PASSCODE"),
   };
-  const llm = has("GROQ_API_KEY") ? "groq" : has("GEMINI_API_KEY") ? "gemini" : "none";
-  return NextResponse.json({ ok: Object.values(settings).every(Boolean), llm, settings });
+  const body: HealthStatus = { ok: Object.values(settings).every(Boolean), llm: activeLlmProvider(), settings };
+  return NextResponse.json(body);
 }

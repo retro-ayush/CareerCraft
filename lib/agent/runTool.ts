@@ -1,10 +1,14 @@
 import "server-only";
+import { AppError } from "../errors";
+import { logger } from "../logger";
 import { tools } from "./tools";
 import type { AgentStep } from "./types";
 
+const toolsByName = new Map(tools.map((t) => [t.name, t]));
+
 /** Finds the tool, checks the model's arguments with Zod, runs it. Shared by the Gemini and Groq loops. */
 export async function runTool(name: string, rawArgs: unknown): Promise<AgentStep> {
-  const tool = tools.find((t) => t.name === name);
+  const tool = toolsByName.get(name);
   if (!tool) {
     return { tool: name, args: rawArgs, ok: false, writes: false, error: `Unknown tool: ${name}` };
   }
@@ -20,7 +24,9 @@ export async function runTool(name: string, rawArgs: unknown): Promise<AgentStep
     const result = await tool.run(parsed.data);
     return { tool: name, args: parsed.data, ok: true, writes: tool.writes, result };
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Tool failed";
+    // User-safe messages (AppError) go back to the model so it can explain; anything else is logged and hidden.
+    const message = err instanceof AppError ? err.message : "The tool failed unexpectedly.";
+    if (!(err instanceof AppError) || err.status >= 500) logger.error("tool_failed", { tool: name, message: err instanceof Error ? err.message : String(err) });
     return { tool: name, args: parsed.data, ok: false, writes: tool.writes, error: message };
   }
 }

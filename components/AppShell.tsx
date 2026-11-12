@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useSignOut } from "./useSignOut";
 import { Bookmark, Compass, LayoutDashboard, LogOut, Menu, Settings, Sparkles, UserRound, X } from "lucide-react";
+import { SHORTLIST_CHANGED, api } from "@/lib/apiClient";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -13,31 +15,28 @@ const NAV = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-async function logout() {
-  await fetch("/api/logout", { method: "POST" });
-  window.location.href = "/login";
-}
-
 /** App frame: sidebar on desktop, top bar + slide-in menu on mobile. Hidden on /login. */
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const [open, setOpen] = useState(false);
+  // The mobile menu remembers the path it was opened on, so it closes itself after navigation.
+  const [openOnPath, setOpenOnPath] = useState<string | null>(null);
+  const open = openOnPath === pathname;
+  const setOpen = (value: boolean) => setOpenOnPath(value ? pathname : null);
+  const signOut = useSignOut();
   const [saved, setSaved] = useState<number | null>(null);
   const isLogin = pathname.startsWith("/login");
-
-  useEffect(() => setOpen(false), [pathname]);
 
   // Shortlist count badge; refreshed on navigation and when a page announces a change.
   useEffect(() => {
     if (isLogin) return;
     const load = () =>
-      fetch("/api/shortlist", { cache: "no-store" })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((d) => d && setSaved(d.shortlist.length))
-        .catch(() => {});
+      api.shortlist
+        .list()
+        .then((d) => setSaved(d.shortlist.length))
+        .catch(() => undefined); // The badge is optional; pages show their own errors.
     load();
-    window.addEventListener("shortlist:changed", load);
-    return () => window.removeEventListener("shortlist:changed", load);
+    window.addEventListener(SHORTLIST_CHANGED, load);
+    return () => window.removeEventListener(SHORTLIST_CHANGED, load);
   }, [pathname, isLogin]);
 
   if (isLogin) return <>{children}</>;
@@ -85,7 +84,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <p className="truncate text-[13.5px] font-medium">Divya K</p>
           <p className="font-mono text-[11px] text-muted">S001</p>
         </div>
-        <button onClick={logout} aria-label="Log out" title="Log out" className="rounded-lg p-2 text-muted transition hover:bg-bad/10 hover:text-bad">
+        <button onClick={signOut} aria-label="Log out" title="Log out" className="rounded-lg p-2 text-muted transition hover:bg-bad/10 hover:text-bad">
           <LogOut size={16} />
         </button>
       </div>

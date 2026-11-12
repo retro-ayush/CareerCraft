@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Bookmark, FileText } from "lucide-react";
-import type { ShortlistItem } from "@/lib/shortlist";
+import type { ShortlistItem } from "@/lib/types";
 import { Card, CompanyLogo, DeadlineChip, ErrorBox, EmptyState, ScoreBar, Skeleton } from "./ui";
 
 export const STATUS_STYLE: Record<string, { dot: string; text: string; soft: string; label: string }> = {

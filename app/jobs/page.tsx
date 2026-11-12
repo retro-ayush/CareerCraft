@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { Loader2, Search, SearchX, SlidersHorizontal, X } from "lucide-react";
-import type { JobMatch } from "@/lib/careermatch";
-import type { ShortlistItem } from "@/lib/shortlist";
+import { endpoints, jobsUrl } from "@/lib/apiClient";
+import type { JobMatch, JobType, ShortlistItem } from "@/lib/types";
 import JobCard from "@/components/JobCard";
 import { EmptyState, ErrorBox, PageHeader, Pill, Skeleton, useApi, useDebounced } from "@/components/ui";
 
@@ -15,20 +15,17 @@ type SortKey = keyof typeof SORTS;
 export default function JobsPage() {
   const [city, setCity] = useState("");
   const [q, setQ] = useState("");
-  const [jobType, setJobType] = useState("");
+  const [jobType, setJobType] = useState<JobType | "">("");
   const [sort, setSort] = useState<SortKey>("score");
   const [minScore, setMinScore] = useState(0);
   const [eligibleOnly, setEligibleOnly] = useState(true);
   const [refresh, setRefresh] = useState(0);
 
   const debouncedQ = useDebounced(q, 300);
-  const url = useMemo(() => {
-    const p = new URLSearchParams({ city, q: debouncedQ, job_type: jobType });
-    return `/api/jobs?${p.toString()}`;
-  }, [city, debouncedQ, jobType]);
+  const url = jobsUrl({ city, q: debouncedQ, job_type: jobType });
 
   const { data, error, loading } = useApi<{ jobs: JobMatch[] }>(url);
-  const shortlist = useApi<{ shortlist: ShortlistItem[] }>("/api/shortlist", refresh);
+  const shortlist = useApi<{ shortlist: ShortlistItem[] }>(endpoints.shortlist, refresh);
   const saved = new Set((shortlist.data?.shortlist ?? []).map((s) => s.job_id));
 
   const all = useMemo(() => data?.jobs ?? [], [data]);
@@ -68,7 +65,7 @@ export default function JobsPage() {
             )}
           </label>
           <div className="grid grid-cols-2 gap-3 md:flex">
-            <select value={jobType} onChange={(e) => setJobType(e.target.value)} className="field md:!w-44">
+            <select value={jobType} onChange={(e) => setJobType(e.target.value as JobType | "")} className="field md:!w-44">
               <option value="">All job types</option>
               <option value="Full-time">Full-time</option>
               <option value="Internship">Internship</option>

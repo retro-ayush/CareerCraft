@@ -1,31 +1,31 @@
 import { z } from "zod";
+import { APPLICATION_STATUSES, JOB_TYPES, WORK_MODES } from "./constants";
 
-/** Shared Zod schemas. Add your own schemas for your problem statement here. */
+/** Request schemas for the REST API and the agent endpoint. Every route validates input with these. */
 
-export const isoDate = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD format")
-  .describe("Date in YYYY-MM-DD format");
+const MAX_MESSAGE_CHARS = 4000;
+const MAX_HISTORY = 30;
 
 export const chatMessageSchema = z.object({
   role: z.enum(["user", "model"]),
-  text: z.string().min(1).max(4000),
+  text: z.string().min(1).max(MAX_MESSAGE_CHARS),
 });
-
-export const agentRequestSchema = z.object({
-  messages: z.array(chatMessageSchema).min(1).max(30),
-});
-
 export type ChatMessage = z.infer<typeof chatMessageSchema>;
 
-// ---------- CareerMatch REST API schemas ----------
+export const agentRequestSchema = z.object({
+  messages: z.array(chatMessageSchema).min(1).max(MAX_HISTORY),
+});
+
+export const loginSchema = z.object({ passcode: z.string().min(1).max(100) });
 
 const skill = z.string().trim().min(1).max(40);
+const city = z.string().trim().min(1).max(40);
+const jobId = z.coerce.number().int().positive();
 
 export const updateProfileSchema = z
   .object({
     skills: z.array(skill).max(40).optional(),
-    preferred_cities: z.array(z.string().trim().min(1).max(40)).min(1).max(6).optional(),
+    preferred_cities: z.array(city).min(1).max(6).optional(),
     interests: z.string().trim().max(300).optional(),
   })
   .refine((v) => Object.keys(v).length > 0, "Send at least one field to update");
@@ -35,15 +35,19 @@ export const shortlistAddSchema = z.object({
   reason: z.string().trim().max(300).optional(),
 });
 
-export const shortlistUpdateSchema = z.object({
-  job_id: z.number().int().positive(),
-  status: z.enum(["saved", "applied", "interviewing", "offer", "rejected"]).optional(),
-  cover_note: z.string().trim().max(2000).optional(),
-});
+export const shortlistUpdateSchema = z
+  .object({
+    job_id: z.number().int().positive(),
+    status: z.enum(APPLICATION_STATUSES).optional(),
+    cover_note: z.string().trim().max(2000).optional(),
+  })
+  .refine((v) => v.status !== undefined || v.cover_note !== undefined, "Send status or cover_note");
+
+export const shortlistDeleteQuerySchema = z.object({ job_id: jobId });
 
 export const jobQuerySchema = z.object({
   city: z.string().trim().max(40).optional(),
   q: z.string().trim().max(60).optional(),
-  job_type: z.enum(["Full-time", "Internship"]).optional(),
-  work_mode: z.enum(["Onsite", "Hybrid", "Remote"]).optional(),
+  job_type: z.enum(JOB_TYPES).optional(),
+  work_mode: z.enum(WORK_MODES).optional(),
 });

@@ -18,10 +18,14 @@ import {
   Target,
   TriangleAlert,
 } from "lucide-react";
-import type { AgentResult, AgentStep } from "@/lib/agent/types";
+import type { AgentStep } from "@/lib/agent/types";
+import { api, notifyShortlistChanged } from "@/lib/apiClient";
 import { toast } from "./ui";
 
 type Message = { role: "user" | "model"; text: string; steps?: AgentStep[] };
+
+/** How many recent messages are sent with each request. */
+const HISTORY_LIMIT = 20;
 
 const SAMPLE_PROMPTS = [
   { icon: Search, text: "Find jobs matching my skills and save the top 3." },
@@ -65,7 +69,6 @@ export default function AgentChat({ onDataChanged }: { onDataChanged?: () => voi
 
   useEffect(() => {
     if (!loading) return;
-    setThinkingIdx(0);
     const t = setInterval(() => setThinkingIdx((i) => Math.min(i + 1, THINKING.length - 1)), 1500);
     return () => clearInterval(t);
   }, [loading]);
@@ -95,35 +98,27 @@ export default function AgentChat({ onDataChanged }: { onDataChanged?: () => voi
     const next: Message[] = [...history, { role: "user", text: trimmed }];
     setMessages(next);
     setInput("");
+    setThinkingIdx(0);
     setLoading(true);
     setError("");
 
     try {
-      const res = await fetch("/api/agent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        // Only the last 20 messages are sent, to keep requests small.
-        body: JSON.stringify({ messages: next.slice(-20).map(({ role, text }) => ({ role, text })) }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        const msg: string = data.error ?? "Request failed";
-        throw new Error(
-          /GEMINI_API_KEY/.test(msg)
-            ? "The agent is not connected yet: add GROQ_API_KEY or GEMINI_API_KEY to .env.local (and Vercel), then restart. The Jobs, Shortlist and Profile pages work without it."
-            : msg
-        );
-      }
-      const result = data as AgentResult;
+      // Only the most recent messages are sent, to keep requests small.
+      const result = await api.agent(next.slice(-HISTORY_LIMIT).map(({ role, text }) => ({ role, text })));
       setMessages([...next, { role: "model", text: result.reply, steps: result.steps }]);
       const writes = result.steps.filter((s) => s.writes && s.ok);
       if (writes.length) {
         onDataChanged?.();
-        window.dispatchEvent(new Event("shortlist:changed"));
+        notifyShortlistChanged();
         toast(`Agent updated your data: ${[...new Set(writes.map((w) => TOOL_LABELS[w.tool] ?? w.tool))].join(", ")}`);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      const msg = err instanceof Error ? err.message : "Something went wrong";
+      setError(
+        /GEMINI_API_KEY|GROQ_API_KEY/.test(msg)
+          ? "The agent is not connected yet: add GROQ_API_KEY or GEMINI_API_KEY to .env.local (and Vercel), then restart. The Jobs, Shortlist and Profile pages work without it."
+          : msg
+      );
     } finally {
       setLoading(false);
       inputRef.current?.focus({ preventScroll: true });

@@ -1,28 +1,16 @@
 import { NextResponse } from "next/server";
-import { getSupabase } from "@/lib/supabase";
-import { CURRENT_STUDENT_ID, getProfile, normalizeSkills } from "@/lib/careermatch";
+import { getProfile, normalizeSkills, updateProfile } from "@/lib/careermatch";
+import { handle, parseBody } from "@/lib/http";
 import { updateProfileSchema } from "@/lib/schemas";
-import { apiError } from "@/lib/apiError";
 
 export const runtime = "nodejs";
 
-/** GET /api/profile -> the logged-in student's profile */
-export async function GET() {
-  try {
-    return NextResponse.json({ profile: await getProfile() });
-  } catch (err) {
-    return apiError(err);
-  }
-}
+/** GET /api/profile -> the logged-in student's profile. */
+export const GET = handle("profile.get", async () => NextResponse.json({ profile: await getProfile() }));
 
-/** PATCH /api/profile  body: { skills?, preferred_cities?, interests? } */
-export async function PATCH(request: Request) {
-  const parsed = updateProfileSchema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid profile update", details: parsed.error.issues }, { status: 400 });
-  }
-  const update = { ...parsed.data, ...(parsed.data.skills ? { skills: normalizeSkills(parsed.data.skills) } : {}) };
-  const { error } = await getSupabase().from("profiles").update(update).eq("id", CURRENT_STUDENT_ID);
-  if (error) return apiError(error);
-  return NextResponse.json({ profile: await getProfile() });
-}
+/** PATCH /api/profile  body: { skills?, preferred_cities?, interests? } -> the updated profile. */
+export const PATCH = handle("profile.update", async (request) => {
+  const input = await parseBody(request, updateProfileSchema, "Invalid profile update");
+  const profile = await updateProfile({ ...input, ...(input.skills ? { skills: normalizeSkills(input.skills) } : {}) });
+  return NextResponse.json({ profile });
+});

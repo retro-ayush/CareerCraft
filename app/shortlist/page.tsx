@@ -3,12 +3,12 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { CalendarDays, Copy, FileText, GripVertical, Inbox, MapPin, RefreshCw, Trash2, X } from "lucide-react";
-import type { ShortlistItem } from "@/lib/shortlist";
+import { api, endpoints, notifyShortlistChanged } from "@/lib/apiClient";
+import { APPLICATION_STATUSES as STATUSES } from "@/lib/constants";
+import type { ApplicationStatus as Status, ShortlistItem } from "@/lib/types";
 import { STATUS_STYLE, StatusBadge } from "@/components/ShortlistPanel";
 import { CompanyLogo, DeadlineChip, EmptyState, ErrorBox, PageHeader, ScoreBar, ScoreRing, Skeleton, toast, useApi } from "@/components/ui";
 
-const STATUSES = ["saved", "applied", "interviewing", "offer", "rejected"] as const;
-type Status = (typeof STATUSES)[number];
 
 function fmtDate(iso: string) {
   const d = new Date(iso);
@@ -17,7 +17,7 @@ function fmtDate(iso: string) {
 
 /** Application tracker: drag cards between status columns; click a card for details and the cover note. */
 export default function ShortlistPage() {
-  const { data, error, loading, reload, setData } = useApi<{ shortlist: ShortlistItem[] }>("/api/shortlist");
+  const { data, error, loading, reload, setData } = useApi<{ shortlist: ShortlistItem[] }>(endpoints.shortlist);
   const items = data?.shortlist ?? [];
   const [dragId, setDragId] = useState<number | null>(null);
   const [overCol, setOverCol] = useState<Status | null>(null);
@@ -30,15 +30,12 @@ export default function ShortlistPage() {
     const item = items.find((i) => i.job_id === job_id);
     if (!item || item.status === status) return;
     setData({ shortlist: items.map((i) => (i.job_id === job_id ? { ...i, status } : i)) });
-    const res = await fetch("/api/shortlist", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ job_id, status }),
-    });
-    if (res.ok) toast(status === "offer" ? `Offer from ${item.company}! Congratulations 🎉` : `${item.company} moved to ${STATUS_STYLE[status].label}`, status === "rejected" ? "info" : "success");
-    else {
-      setData(prev);
-      toast((await res.json().catch(() => ({}))).error ?? "Could not update status", "error");
+    try {
+      await api.shortlist.update(job_id, { status });
+      toast(status === "offer" ? `Offer from ${item.company}! Congratulations 🎉` : `${item.company} moved to ${STATUS_STYLE[status].label}`, status === "rejected" ? "info" : "success");
+    } catch (err) {
+      setData(prev); // roll back the optimistic move
+      toast(err instanceof Error ? err.message : "Could not update status", "error");
     }
   }
 
@@ -46,13 +43,13 @@ export default function ShortlistPage() {
     const prev = data;
     setOpenId(null);
     setData({ shortlist: items.filter((i) => i.job_id !== job_id) });
-    const res = await fetch(`/api/shortlist?job_id=${job_id}`, { method: "DELETE" });
-    if (res.ok) {
+    try {
+      await api.shortlist.remove(job_id);
       toast(`Removed job #${job_id}`, "info");
-      window.dispatchEvent(new Event("shortlist:changed"));
-    } else {
+      notifyShortlistChanged();
+    } catch (err) {
       setData(prev);
-      toast("Could not remove", "error");
+      toast(err instanceof Error ? err.message : "Could not remove", "error");
     }
   }
 

@@ -1,57 +1,49 @@
 import "server-only";
 import type { Content, Part } from "@google/genai";
+import { GEMINI_MODEL, activeLlmProvider } from "../env";
 import { getGemini } from "../gemini";
-import { GEMINI_MODEL } from "../env";
 import type { ChatMessage } from "../schemas";
-import { tools } from "./tools";
+import { FALLBACK_REPLY, MAX_TOOL_ROUNDS, TEMPERATURE, TOO_MANY_STEPS_REPLY } from "./config";
 import { toFunctionDeclarations } from "./defineTool";
-import { buildSystemPrompt } from "./systemPrompt";
-import type { AgentResult, AgentStep } from "./types";
-import { runTool } from "./runTool";
 import { runAgentGroq } from "./runAgentGroq";
+import { runTool } from "./runTool";
+import { buildSystemPrompt } from "./systemPrompt";
+import { tools } from "./tools";
+import type { AgentResult, AgentStep } from "./types";
 
-/** Stops the agent from looping forever and using up your Gemini quota. */
-const MAX_ROUNDS = 5;
+/** Computed once per server instance; the tool list is static. */
+const functionDeclarations = toFunctionDeclarations(tools);
 
 /**
- * THE AGENT LOOP
- * 1. Send the chat + the tool list to Gemini.
- * 2. If Gemini asks for tools, check the arguments with Zod and run them.
- * 3. Send the results back to Gemini.
- * 4. Repeat until Gemini gives a final text answer (or MAX_ROUNDS is reached).
+ * THE AGENT LOOP (provider entry point).
+ * 1. Send the chat and the tool list to the model.
+ * 2. If the model requests tools, validate the arguments with Zod and run them (runTool).
+ * 3. Send the results back.
+ * 4. Repeat until the model answers in text, or MAX_TOOL_ROUNDS is reached.
+ *
+ * Uses Groq when GROQ_API_KEY is set, otherwise Gemini. Both share the same tools and validation.
  */
 export async function runAgent(messages: ChatMessage[]): Promise<AgentResult> {
-  // If a Groq key is set, use Groq (OpenAI-compatible). Otherwise use Gemini.
-  if (process.env.GROQ_API_KEY?.trim()) return runAgentGroq(messages);
+  if (activeLlmProvider() === "groq") return runAgentGroq(messages);
+  return runAgentGemini(messages);
+}
 
+async function runAgentGemini(messages: ChatMessage[]): Promise<AgentResult> {
   const ai = getGemini();
   const steps: AgentStep[] = [];
-  const functionDeclarations = toFunctionDeclarations(tools);
+  const contents: Content[] = messages.map((m) => ({ role: m.role, parts: [{ text: m.text }] }));
 
-  const contents: Content[] = messages.map((m) => ({
-    role: m.role,
-    parts: [{ text: m.text }],
-  }));
-
-  for (let round = 0; round < MAX_ROUNDS; round++) {
+  for (let round = 0; round < MAX_TOOL_ROUNDS.gemini; round++) {
     const response = await ai.models.generateContent({
       model: GEMINI_MODEL,
       contents,
-      config: {
-        systemInstruction: buildSystemPrompt(),
-        tools: [{ functionDeclarations }],
-        temperature: 0.2,
-      },
+      config: { systemInstruction: buildSystemPrompt(), tools: [{ functionDeclarations }], temperature: TEMPERATURE },
     });
 
     const calls = response.functionCalls ?? [];
+    if (calls.length === 0) return { reply: response.text?.trim() || FALLBACK_REPLY, steps };
 
-    // No tool requested: this is the final answer.
-    if (calls.length === 0) {
-      return { reply: response.text?.trim() || "Sorry, I could not answer that.", steps };
-    }
-
-    // Keep Gemini's own turn (it carries the tool request) in the history.
+    // Keep the model's own turn (it carries the tool request) in the history.
     const modelTurn = response.candidates?.[0]?.content;
     if (modelTurn) contents.push(modelTurn);
 
@@ -60,18 +52,11 @@ export async function runAgent(messages: ChatMessage[]): Promise<AgentResult> {
       const step = await runTool(call.name ?? "", call.args ?? {});
       steps.push(step);
       responseParts.push({
-        functionResponse: {
-          id: call.id,
-          name: call.name,
-          response: step.ok ? { result: step.result } : { error: step.error },
-        },
+        functionResponse: { id: call.id, name: call.name, response: step.ok ? { result: step.result } : { error: step.error } },
       });
     }
     contents.push({ role: "user", parts: responseParts });
   }
 
-  return {
-    reply: "I needed too many steps for this request. Please try a simpler or more specific question.",
-    steps,
-  };
+  return { reply: TOO_MANY_STEPS_REPLY, steps };
 }

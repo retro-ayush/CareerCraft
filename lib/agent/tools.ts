@@ -11,8 +11,9 @@ import {
   normalizeSkills,
   rankMatches,
 } from "../careermatch";
+import { APPLICATION_STATUSES, JOB_TYPES, WORK_MODES } from "../constants";
+import { NotFoundError, ValidationError } from "../errors";
 import {
-  APPLICATION_STATUSES,
   addToShortlist,
   changeSkills,
   getShortlist,
@@ -47,8 +48,8 @@ const searchJobs = defineTool({
   schema: z.object({
     city: z.string().trim().max(40).optional().describe("City to filter by, e.g. Chennai, Bengaluru, Hyderabad, Pune, Coimbatore, or Remote"),
     keyword: z.string().trim().max(60).optional().describe("Words from the role title or a skill, e.g. 'data analyst', 'react', 'intern'"),
-    job_type: z.enum(["Full-time", "Internship"]).optional().describe("Full-time or Internship"),
-    work_mode: z.enum(["Onsite", "Hybrid", "Remote"]).optional().describe("Onsite, Hybrid or Remote"),
+    job_type: z.enum(JOB_TYPES).optional().describe("Full-time or Internship"),
+    work_mode: z.enum(WORK_MODES).optional().describe("Onsite, Hybrid or Remote"),
     min_score: z.number().int().min(0).max(100).optional().describe("Only return jobs with match_score at or above this"),
     limit: z.number().int().min(1).max(15).optional().describe("Max jobs to return. Default 8"),
     include_ineligible: z.boolean().optional().describe("true to also show jobs the student cannot apply for, with the reason"),
@@ -107,7 +108,7 @@ const getSkillGapPlan = defineTool({
   run: async ({ role_keyword, city }) => {
     const [profile, jobs] = await Promise.all([getProfile(), getOpenJobs()]);
     const filtered = filterJobs(jobs, { keyword: role_keyword, city });
-    if (filtered.length === 0) throw new Error(`No open jobs found for "${role_keyword ?? ""}" ${city ?? ""}. Try a broader role.`);
+    if (filtered.length === 0) throw new NotFoundError(`No open jobs found for "${role_keyword ?? ""}" ${city ?? ""}. Try a broader role.`);
     return { student_skills: profile.skills, ...buildSkillGapPlan(filtered, profile) };
   },
 });
@@ -183,7 +184,7 @@ const updateMySkills = defineTool({
     remove: z.array(z.string().trim().min(1).max(40)).max(10).optional().describe("Skills to remove"),
   }),
   run: async ({ add, remove }) => {
-    if (!add?.length && !remove?.length) throw new Error("Tell me which skill to add or remove.");
+    if (!add?.length && !remove?.length) throw new ValidationError("Tell me which skill to add or remove.");
     return changeSkills(add ?? [], remove ?? []);
   },
 });

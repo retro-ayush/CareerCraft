@@ -3,20 +3,10 @@
 import Link from "next/link";
 import { useState } from "react";
 import { ArrowUpRight, BarChart3, Check, CircleCheck, CircleDashed, GraduationCap, Lightbulb, MapPin, Pencil, Plus, Sparkles, Target, X } from "lucide-react";
-import type { Profile } from "@/lib/careermatch";
+import { api, endpoints } from "@/lib/apiClient";
+import type { Insights, Profile } from "@/lib/types";
 import { Card, CountUp, ErrorBox, PageHeader, Skeleton, prettySkill, toast, useApi } from "@/components/ui";
 
-type SkillPlan = {
-  jobs_considered: number;
-  top_skills_to_learn: {
-    skill: string;
-    required_in_jobs: number;
-    nice_to_have_in_jobs: number;
-    jobs_fully_unlocked: number;
-    avg_score_gain: number;
-    example_jobs: string[];
-  }[];
-};
 
 /** Ring used for CGPA and profile completion. */
 function Ring({ value, max, label, display, color }: { value: number; max: number; label: string; display: React.ReactNode; color: string }) {
@@ -53,8 +43,8 @@ function Ring({ value, max, label, display, color }: { value: number; max: numbe
 /** Profile dashboard: identity, academics, editable skills and cities, completion, skill gap analysis. */
 export default function ProfilePage() {
   const [refresh, setRefresh] = useState(0);
-  const profile = useApi<{ profile: Profile }>("/api/profile", refresh);
-  const insights = useApi<{ skill_plan: SkillPlan; strong_matches: number; eligible_jobs: number }>("/api/insights", refresh);
+  const profile = useApi<{ profile: Profile }>(endpoints.profile, refresh);
+  const insights = useApi<Insights>(endpoints.insights, refresh);
   const [newSkill, setNewSkill] = useState("");
   const [cities, setCities] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -76,17 +66,17 @@ export default function ProfilePage() {
     : [];
   const completion = checks.length ? Math.round((checks.filter((c) => c.ok).length / checks.length) * 100) : 0;
 
-  async function patch(body: object, success?: string) {
+  async function patch(fields: Parameters<typeof api.profile.update>[0], success?: string) {
     setSaving(true);
-    const res = await fetch("/api/profile", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    setSaving(false);
-    if (!res.ok) toast((await res.json().catch(() => ({}))).error ?? "Could not save", "error");
-    else if (success) toast(success);
-    setRefresh((r) => r + 1);
+    try {
+      await api.profile.update(fields);
+      if (success) toast(success);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Could not save", "error");
+    } finally {
+      setSaving(false);
+      setRefresh((r) => r + 1);
+    }
   }
 
   function addSkill(skill: string) {

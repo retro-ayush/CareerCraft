@@ -1,9 +1,12 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ArrowRight, CheckCircle2, Eye, EyeOff, KeyRound, Loader2, ShieldCheck, TriangleAlert } from "lucide-react";
+import { api } from "@/lib/apiClient";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [passcode, setPasscode] = useState("");
   const [show, setShow] = useState(false);
   const [error, setError] = useState("");
@@ -14,18 +17,14 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError("");
-    const res = await fetch("/api/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ passcode }),
-    });
-    if (res.ok) {
+    try {
+      await api.login(passcode);
       setSuccess(true);
-      window.location.href = "/";
-    } else {
+      router.replace("/");
+      router.refresh();
+    } catch (err) {
       setLoading(false);
-      const data = await res.json().catch(() => ({}));
-      setError(data.error ?? "Login failed");
+      setError(err instanceof Error ? err.message : "Login failed");
     }
   }
 

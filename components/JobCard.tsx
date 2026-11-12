@@ -2,22 +2,21 @@
 
 import { useState } from "react";
 import { Ban, Bookmark, BookmarkCheck, Briefcase, ChevronDown, Loader2, MapPin, Wallet } from "lucide-react";
-import type { JobMatch } from "@/lib/careermatch";
+import { api, notifyShortlistChanged } from "@/lib/apiClient";
+import type { JobMatch } from "@/lib/types";
 import { CompanyLogo, DeadlineChip, ScoreRing, SkillChip, toast } from "./ui";
 
 /** Saves a job to the shortlist through the existing API. Returns true on success. */
-export async function saveJob(job_id: number) {
-  const res = await fetch("/api/shortlist", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ job_id }),
-  });
-  const json = await res.json().catch(() => ({}));
-  if (res.ok) {
+export async function saveJob(job_id: number): Promise<boolean> {
+  try {
+    await api.shortlist.add(job_id);
     toast(`Saved job #${job_id} to your shortlist`);
-    window.dispatchEvent(new Event("shortlist:changed"));
-  } else toast(json.error ?? "Could not save", "error");
-  return res.ok;
+    notifyShortlistChanged();
+    return true;
+  } catch (err) {
+    toast(err instanceof Error ? err.message : "Could not save", "error");
+    return false;
+  }
 }
 
 export default function JobCard({ job: j, saved, onSaved, index = 0 }: { job: JobMatch; saved: boolean; onSaved?: () => void; index?: number }) {

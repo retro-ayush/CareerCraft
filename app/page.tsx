@@ -1,16 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { ArrowRight, Bookmark, Briefcase, Gauge, GraduationCap, MapPin, Send, Sparkles, TrendingUp } from "lucide-react";
-import type { JobMatch, Profile } from "@/lib/careermatch";
-import type { ShortlistItem } from "@/lib/shortlist";
+import { endpoints, jobsUrl } from "@/lib/apiClient";
+import type { Insights, JobMatch, Profile, ShortlistItem } from "@/lib/types";
 import AgentChat from "@/components/AgentChat";
 import JobCard from "@/components/JobCard";
 import ShortlistPanel from "@/components/ShortlistPanel";
 import { Card, CountUp, ErrorBox, Skeleton, SkillChip, useApi } from "@/components/ui";
 
-type Insights = { open_jobs: number; eligible_jobs: number; strong_matches: number; closing_this_week: number };
+
+const noopSubscribe = () => () => undefined;
 
 function greeting() {
   const h = new Date().getHours();
@@ -23,13 +24,13 @@ function greeting() {
  */
 export default function DashboardPage() {
   const [refreshKey, setRefreshKey] = useState(0);
-  const [hello, setHello] = useState("Hello");
-  useEffect(() => setHello(greeting()), []);
+  // Time-of-day greeting computed on the client; the server renders a neutral fallback (no hydration mismatch).
+  const hello = useSyncExternalStore(noopSubscribe, greeting, () => "Hello");
 
-  const insights = useApi<Insights>("/api/insights", refreshKey);
-  const jobs = useApi<{ jobs: JobMatch[] }>("/api/jobs", refreshKey);
-  const shortlist = useApi<{ shortlist: ShortlistItem[] }>("/api/shortlist", refreshKey);
-  const profile = useApi<{ profile: Profile }>("/api/profile", refreshKey);
+  const insights = useApi<Insights>(endpoints.insights, refreshKey);
+  const jobs = useApi<{ jobs: JobMatch[] }>(jobsUrl(), refreshKey);
+  const shortlist = useApi<{ shortlist: ShortlistItem[] }>(endpoints.shortlist, refreshKey);
+  const profile = useApi<{ profile: Profile }>(endpoints.profile, refreshKey);
 
   const eligible = useMemo(() => (jobs.data?.jobs ?? []).filter((j) => j.eligible), [jobs.data]);
   const avgScore = jobs.data ? (eligible.length ? Math.round(eligible.reduce((a, j) => a + j.match_score, 0) / eligible.length) : 0) : undefined;

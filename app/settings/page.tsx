@@ -2,8 +2,10 @@
 
 import { Bot, CircleCheck, CircleX, Database, KeyRound, LogOut, ServerCog, ShieldCheck, Wrench } from "lucide-react";
 import { Card, ErrorBox, PageHeader, Skeleton, useApi } from "@/components/ui";
+import { useSignOut } from "@/components/useSignOut";
+import { endpoints } from "@/lib/apiClient";
+import type { HealthStatus } from "@/lib/types";
 
-type Health = { ok: boolean; llm: "groq" | "gemini" | "none"; settings: Record<string, boolean> };
 
 const SETTING_LABELS: Record<string, { label: string; icon: React.ElementType }> = {
   LLM_KEY: { label: "AI model key (Groq or Gemini)", icon: Bot },
@@ -27,12 +29,8 @@ const TOOLS = [
 
 /** Settings: account, configuration status from /api/health (never shows values) and the agent's tools. */
 export default function SettingsPage() {
-  const health = useApi<Health>("/api/health");
-
-  async function logout() {
-    await fetch("/api/logout", { method: "POST" });
-    window.location.href = "/login";
-  }
+  const health = useApi<HealthStatus>(endpoints.health);
+  const signOut = useSignOut();
 
   return (
     <div className="space-y-6">
@@ -48,7 +46,7 @@ export default function SettingsPage() {
                 <p className="font-mono text-[12px] text-muted">S001</p>
               </div>
             </div>
-            <button onClick={logout} className="btn-ghost text-[13px] hover:!border-bad/40 hover:!text-bad">
+            <button onClick={signOut} className="btn-ghost text-[13px] hover:!border-bad/40 hover:!text-bad">
               <LogOut size={14} /> Log out
             </button>
           </div>

@@ -31,8 +31,11 @@ export function Brand({ size = "md" }: { size?: "md" | "sm" }) {
   );
 }
 
-/** App frame: sidebar on desktop, top bar + slide-in menu on mobile. Hidden on /login (the landing page). */
-export default function AppShell({ children }: { children: React.ReactNode }) {
+/**
+ * App frame: sidebar on desktop, top bar + slide-in menu on mobile.
+ * Hidden for signed-out visitors (they only ever see the landing page at "/"). `authed` comes from the server layout.
+ */
+export default function AppShell({ children, authed }: { children: React.ReactNode; authed: boolean }) {
   const pathname = usePathname();
   // The mobile menu remembers the path it was opened on, so it closes itself after navigation.
   const [openOnPath, setOpenOnPath] = useState<string | null>(null);
@@ -40,11 +43,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const setOpen = (value: boolean) => setOpenOnPath(value ? pathname : null);
   const signOut = useSignOut();
   const [saved, setSaved] = useState<number | null>(null);
-  const isLogin = pathname.startsWith("/login");
 
   // Shortlist count badge; refreshed on navigation and when a page announces a change.
   useEffect(() => {
-    if (isLogin) return;
+    if (!authed) return;
     const load = () =>
       api.shortlist
         .list()
@@ -53,9 +55,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     load();
     window.addEventListener(SHORTLIST_CHANGED, load);
     return () => window.removeEventListener(SHORTLIST_CHANGED, load);
-  }, [pathname, isLogin]);
+  }, [pathname, authed]);
 
-  if (isLogin) return <MotionConfig reducedMotion="user">{children}</MotionConfig>;
+  if (!authed) return <MotionConfig reducedMotion="user">{children}</MotionConfig>;
 
   const nav = (
     <nav aria-label="Main" className="flex flex-col gap-1">

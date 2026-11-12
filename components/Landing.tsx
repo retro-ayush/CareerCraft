@@ -47,8 +47,8 @@ const SAMPLE_JOB: JobMatch = {
 
 const PRIVACY_NOTE = "The passcode keeps the app and the model quota private.";
 
-/** Landing page and sign-in. Every signed-out visit lands here (see proxy.ts). */
-export default function LoginPage() {
+/** Landing page and sign-in, shown at "/" to signed-out visitors (see app/page.tsx). */
+export default function Landing() {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [passcode, setPasscode] = useState("");

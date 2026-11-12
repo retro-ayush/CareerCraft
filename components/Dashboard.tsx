@@ -27,7 +27,7 @@ function greeting() {
  * DASHBOARD: greeting, live stats, AI assistant, profile summary, live shortlist and top recommendations.
  * Everything reloads whenever the agent writes data (refreshKey).
  */
-export default function DashboardPage() {
+export default function Dashboard() {
   const [refreshKey, setRefreshKey] = useState(0);
   // Time-of-day greeting computed on the client; the server renders a neutral fallback (no hydration mismatch).
   const hello = useSyncExternalStore(noopSubscribe, greeting, () => "Hello");
